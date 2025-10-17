@@ -1,29 +1,26 @@
 import express from "express";
 import { 
-  handleMessage, 
+  saveConversation, 
   getUserSessions, 
   deleteSession, 
-  createNewSession 
+  createNewSession,
+  updateSession 
 } from "../controllers/conversationController.js";
 import authMiddleware from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-// Debug middleware for this router
-router.use((req, res, next) => {
-  console.log(`Conversation route: ${req.method} ${req.originalUrl}`);
-  next();
-});
-
-// IMPORTANT: Put specific routes BEFORE general routes
-// Create a new empty session - THIS MUST COME BEFORE the general POST route
+// Create a new empty session
 router.post("/new", authMiddleware, createNewSession);
+
+// Save conversation from Flask (called by Flask server)
+router.post("/save", authMiddleware, saveConversation);
 
 // Fetch all sessions for authenticated user
 router.get("/", authMiddleware, getUserSessions);
 
-// Send message to existing session or create new one
-router.post("/", authMiddleware, handleMessage);
+// Update session title
+router.put("/:id", authMiddleware, updateSession);
 
 // Delete a specific session
 router.delete("/:id", authMiddleware, deleteSession);

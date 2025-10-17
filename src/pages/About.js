@@ -30,7 +30,7 @@ const About = () => {
             initial={{ opacity: 0, x: -30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8, delay: 0.2 }}
-            className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-8"
+            className="bg-gradient-to-r from-primary-50 to-blue-50 dark:from-primary-900/20 dark:to-blue-900/20 rounded-2xl p-8"
           >
             <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
               🚀 Our Mission
@@ -46,7 +46,7 @@ const About = () => {
             initial={{ opacity: 0, x: 30 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8, delay: 0.4 }}
-            className="bg-gray-50 dark:bg-gray-800 rounded-2xl p-8"
+            className="bg-gradient-to-r from-primary-50 to-blue-50 dark:from-primary-900/20 dark:to-blue-900/20 rounded-2xl p-8"
           >
             <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
               🛠️ Technology Stack
@@ -121,7 +121,7 @@ const About = () => {
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.8 }}
-            className="text-center bg-gray-50 dark:bg-gray-800 rounded-2xl p-8"
+            className="text-center bg-gradient-to-r from-primary-50 to-blue-50 dark:from-primary-900/20 dark:to-blue-900/20 rounded-2xl p-8"
           >
             <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
               🎯 Future Roadmap

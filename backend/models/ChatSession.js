@@ -14,7 +14,7 @@ const messageSchema = new mongoose.Schema({
     type: Date, 
     default: Date.now 
   }
-}, { _id: true }); // Ensure each message has an _id
+}, { _id: true });
 
 const chatSessionSchema = new mongoose.Schema(
   {
@@ -26,7 +26,7 @@ const chatSessionSchema = new mongoose.Schema(
     conversationId: { 
       type: String, 
       unique: true,
-      sparse: true // Allow multiple documents without this field
+      sparse: true
     },
     title: { 
       type: String, 

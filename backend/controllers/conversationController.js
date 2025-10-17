@@ -1,16 +1,29 @@
 import ChatSession from "../models/ChatSession.js";
 import User from "../models/User.js";
 
-// Send message and store in MongoDB
-export const handleMessage = async (req, res) => {
+// Save conversation from Flask server
+export const saveConversation = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { message, sessionId } = req.body;
+    const { userId, sessionId, userMessage, botMessage, model } = req.body;
+
+    console.log(`💾 saveConversation called with:`, {
+      userId,
+      sessionId,
+      userMessage: userMessage?.substring(0, 50) + (userMessage?.length > 50 ? '...' : ''),
+      botMessage: botMessage?.substring(0, 50) + (botMessage?.length > 50 ? '...' : ''),
+      model,
+      user: req.user ? req.user.id : 'No user in token'
+    });
+
+    if (!userId || !userMessage || !botMessage) {
+      console.log(`❌ Missing required fields: userId=${userId}, userMessage=${userMessage}, botMessage=${botMessage}`);
+      return res.status(400).json({ error: "Missing required fields" });
+    }
 
     let session;
 
+    // Check if session exists
     if (sessionId && sessionId !== "null" && sessionId !== "undefined") {
-      // Find existing session
       session = await ChatSession.findOne({
         _id: sessionId,
         userId: userId
@@ -20,48 +33,40 @@ export const handleMessage = async (req, res) => {
         return res.status(404).json({ error: "Session not found" });
       }
     } else {
-      // Create new session if none exists
+      // Create new session
+      const title = userMessage.substring(0, 30) + (userMessage.length > 30 ? "..." : "");
       session = new ChatSession({
         userId: userId,
-        title: message ? message.substring(0, 30) + (message.length > 30 ? "..." : "") : "New Chat"
+        title: title,
+        messages: []
       });
 
-      // Increment user's totalChats count when a new chat is created
+      // Increment user's totalChats count
       try {
         await User.findByIdAndUpdate(userId, { $inc: { totalChats: 1 } });
-        console.log(`📊 User ${userId} totalChats incremented for new session`);
+        console.log(`📊 User ${userId} totalChats incremented`);
       } catch (countError) {
-        console.error(`❌ Error incrementing totalChats for user ${userId}:`, countError);
-        // Don't fail session creation if updating totalChats fails
+        console.error(`❌ Error incrementing totalChats:`, countError);
       }
     }
-
-    let botReply = "";
 
     // Add user message
-    if (message && message.trim() !== "") {
-      session.messages.push({
-        sender: "user",
-        message: message.trim(),
-        timestamp: new Date()
-      });
+    session.messages.push({
+      sender: "user",
+      message: userMessage.trim(),
+      timestamp: new Date()
+    });
 
-      // Generate bot response (replace with your actual AI integration)
-      botReply = await generateBotResponse(message);
-
-      session.messages.push({
-        sender: "bot",
-        message: botReply,
-        timestamp: new Date()
-      });
-
-      // Update session title based on first message if not set
-      if (!session.title || session.title === "New Chat") {
-        session.title = message.substring(0, 50) + (message.length > 50 ? "..." : "");
-      }
-    }
+    // Add bot message
+    session.messages.push({
+      sender: "bot",
+      message: botMessage,
+      timestamp: new Date()
+    });
 
     await session.save();
+
+    console.log(`✅ Conversation saved to session ${session._id}`);
 
     res.status(200).json({
       session: {
@@ -70,109 +75,15 @@ export const handleMessage = async (req, res) => {
         messages: session.messages,
         createdAt: session.createdAt,
         updatedAt: session.updatedAt
-      },
-      botReply: botReply
+      }
     });
   } catch (error) {
-    console.error("❌ handleMessage Error:", error);
+    console.error("❌ saveConversation Error:", error);
     res.status(500).json({ error: error.message });
   }
 };
 
-// Enhanced bot response generator with legal context
-// const generateBotResponse = async (message) => {
-//   try {
-//     const response = await fetch("http://localhost:5001/generate", {
-//       method: "POST",
-//       headers: { "Content-Type": "application/json" },
-//       body: JSON.stringify({ query: message })
-//     });
-
-//     if (!response.ok) {
-//       throw new Error(`Flask server error: ${response.statusText}`);
-//     }
-
-//     const data = await response.json();
-//     return data.response || "⚠️ No response from AI model.";
-//   } catch (error) {
-//     console.error("❌ generateBotResponse Error:", error);
-//     return "⚠️ Sorry, I could not process your request right now.";
-//   }
-// };
-
-// const generateBotResponse = async (message) => {
-//   try {
-//     const response = await fetch(
-//       "https://noncasuistical-overgenerously-linwood.ngrok-free.dev/generate",
-//       {
-//         method: "POST",
-//         headers: { "Content-Type": "application/json" },
-//         body: JSON.stringify({ query: message })
-//       }
-//     );
-
-//     if (!response.ok) {
-//       throw new Error(`Flask server error: ${response.statusText}`);
-//     }
-
-//     const data = await response.json();
-//     return data.response || "⚠️ No response from AI model.";
-//   } catch (error) {
-//     console.error("❌ generateBotResponse Error:", error);
-//     return "⚠️ Sorry, I could not process your request right now.";
-//   }
-// };
-
-const generateBotResponse = async (message) => {
-  try {
-    // Your ngrok URL - update this when you get a new URL
-    const API_URL = "https://consequential-wettable-danika.ngrok-free.dev/generate";
-    
-    console.log("🔄 Sending request to:", API_URL);
-    console.log("📤 Message:", message);
-    
-    const response = await fetch(API_URL, {
-      method: "POST",
-      headers: { 
-        "Content-Type": "application/json",
-        "ngrok-skip-browser-warning": "true"  // Skip ngrok warning page
-      },
-      body: JSON.stringify({ query: message })
-    });
-
-    console.log("📥 Response status:", response.status);
-    console.log("📥 Response OK:", response.ok);
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("❌ Error response:", errorText);
-      throw new Error(`Server error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    console.log("✅ Data received:", data);
-    
-    if (!data.response) {
-      throw new Error("No response from AI model");
-    }
-    
-    return data.response;
-    
-  } catch (error) {
-    console.error("❌ generateBotResponse Error:", error);
-    
-    // More specific error messages
-    if (error.message.includes("Failed to fetch")) {
-      return "⚠️ Cannot connect to AI server. Please check if the server is running.";
-    }
-    
-    return `⚠️ Sorry, I could not process your request: ${error.message}`;
-  }
-};
-
-
-
-// Fetch all sessions for the user
+// Get all sessions for user
 export const getUserSessions = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -194,7 +105,7 @@ export const deleteSession = async (req, res) => {
     const { id } = req.params;
     const userId = req.user.id;
 
-    console.log(`🗑️  Attempting to delete session ${id} for user ${userId}`);
+    console.log(`🗑️ Attempting to delete session ${id} for user ${userId}`);
 
     const result = await ChatSession.findOneAndDelete({
       _id: id,
@@ -208,9 +119,8 @@ export const deleteSession = async (req, res) => {
 
     console.log(`✅ Session ${id} deleted successfully`);
 
-    // Decrement user's totalChats count if it's greater than 0
+    // Decrement user's totalChats count
     try {
-      // First get current count
       const user = await User.findById(userId);
       const currentCount = user ? user.totalChats : 0;
       const newCount = Math.max(0, currentCount - 1);
@@ -221,8 +131,7 @@ export const deleteSession = async (req, res) => {
 
       console.log(`📊 User ${userId} totalChats updated: ${currentCount} -> ${newCount}`);
     } catch (updateError) {
-      console.error(`❌ Error updating user totalChats for user ${userId}:`, updateError);
-      // Don't fail the deletion if updating totalChats fails
+      console.error(`❌ Error updating user totalChats:`, updateError);
     }
 
     res.status(200).json({ message: "Session deleted successfully" });
@@ -255,10 +164,9 @@ export const createNewSession = async (req, res) => {
     // Increment user's totalChats count
     try {
       await User.findByIdAndUpdate(userId, { $inc: { totalChats: 1 } });
-      console.log(`📊 User ${userId} totalChats incremented for explicit new session`);
+      console.log(`📊 User ${userId} totalChats incremented for new session`);
     } catch (countError) {
-      console.error(`❌ Error incrementing totalChats for user ${userId}:`, countError);
-      // Don't fail session creation if updating totalChats fails
+      console.error(`❌ Error incrementing totalChats:`, countError);
     }
 
     res.status(201).json({
@@ -274,3 +182,43 @@ export const createNewSession = async (req, res) => {
   }
 };
 
+// Update session title
+export const updateSession = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title } = req.body;
+    const userId = req.user.id;
+
+    console.log(`✏️ Attempting to update session ${id} title to '${title}'`);
+
+    if (!title || title.trim() === '') {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+
+    const session = await ChatSession.findOne({
+      _id: id,
+      userId: userId
+    });
+
+    if (!session) {
+      console.log(`❌ Session ${id} not found for user ${userId}`);
+      return res.status(404).json({ error: 'Session not found' });
+    }
+
+    session.title = title.trim();
+    session.updatedAt = new Date();
+
+    await session.save();
+
+    console.log(`✅ Session ${id} title updated successfully to '${title}'`);
+
+    res.status(200).json({
+      _id: session._id,
+      title: session.title,
+      updatedAt: session.updatedAt
+    });
+  } catch (error) {
+    console.error('❌ updateSession Error:', error);
+    res.status(500).json({ error: error.message });
+  }
+};

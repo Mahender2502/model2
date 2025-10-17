@@ -1,13 +1,15 @@
+
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useAuth } from '../contexts/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
-
 const Profile = () => {
   const [userInfo, setUserInfo] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const { logout } = useAuth();
 
   // API base URL - adjust this to match your backend URL
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
@@ -197,7 +199,6 @@ const Profile = () => {
     setError('');
   };
 
-  const avatarOptions = ['👤', '🧑‍💻', '👩‍💻', '🧑‍🎓', '👨‍🎓', '🧑‍💼', '👩‍💼', '🧑‍🔬', '👩‍🔬', '🧑‍🎨', '👩‍🎨'];
 
   // Loading state
   if (isLoading) {
@@ -292,53 +293,29 @@ const Profile = () => {
                 Member since {userInfo.joinDate}
               </div>
               <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-            className="mt-6"
-          >
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => {
-                localStorage.removeItem('token');
-                localStorage.removeItem('userEmail');
-                window.location.href = '/home';
-              }}
-              className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white py-3 px-6 rounded-lg font-medium transition-all duration-300 shadow-lg hover:shadow-xl"
-            >
-              <span className="flex items-center justify-center">
-                <span className="mr-2">🚪</span>
-                Logout
-              </span>
-            </motion.button>
-          </motion.div>
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.3 }}
+                className="mt-6"
+              >
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => {
+                    logout();
+                    window.location.href = '/home';
+                  }}
+                  className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white py-3 px-6 rounded-lg font-medium transition-all duration-300 shadow-lg hover:shadow-xl"
+                >
+                  <span className="flex items-center justify-center">
+                    <span className="mr-2">🚪</span>
+                    Logout
+                  </span>
+                </motion.button>
+              </motion.div>
             </div>
           </motion.div>
 
-          {/* Logout Button */}
-          {/* <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.3 }}
-            className="mt-6"
-          >
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => {
-                localStorage.removeItem('token');
-                localStorage.removeItem('userEmail');
-                window.location.href = '/login';
-              }}
-              className="w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 text-white py-3 px-6 rounded-lg font-medium transition-all duration-300 shadow-lg hover:shadow-xl"
-            >
-              <span className="flex items-center justify-center">
-                <span className="mr-2">🚪</span>
-                Logout
-              </span>
-            </motion.button>
-          </motion.div> */}
 
           {/* Profile Details */}
           <motion.div
@@ -347,7 +324,7 @@ const Profile = () => {
             transition={{ duration: 0.8, delay: 0.4 }}
             className="lg:col-span-2"
           >
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8">
+            <div className="bg-gradient-to-br from-primary-50 to-blue-50 dark:from-gray-800 dark:to-gray-700 rounded-2xl shadow-lg p-8">
               <div className="flex justify-between items-center mb-6">
                 <h3 className="text-2xl font-semibold text-gray-900 dark:text-white">
                   Profile Information
@@ -395,28 +372,7 @@ const Profile = () => {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Avatar
-                    </label>
-                    <div className="flex flex-wrap gap-2">
-                      {avatarOptions.map((avatar, index) => (
-                        <motion.button
-                          key={index}
-                          whileHover={{ scale: 1.1 }}
-                          whileTap={{ scale: 0.9 }}
-                          onClick={() => setEditForm({ ...editForm, avatar })}
-                          className={`text-2xl p-2 rounded-lg border-2 transition-colors ${
-                            editForm.avatar === avatar
-                              ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
-                              : 'border-gray-200 dark:border-gray-600 hover:border-primary-300'
-                          }`}
-                        >
-                          {avatar}
-                        </motion.button>
-                      ))}
-                    </div>
-                  </div>
+                  
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                       First Name
@@ -501,15 +457,14 @@ const Profile = () => {
             <div className="grid md:grid-cols-3 gap-6 max-w-4xl w-full">
               {[
                 { label: 'Total Chats', value: userInfo?.totalChats || 0, icon: '💬' },
-                { label: 'Days Active', value: Math.floor((new Date() - new Date(userInfo?.createdAt)) / (1000 * 60 * 60 * 24)) || 1, icon: '📅' },
-
+                { label: 'Days Active', value: Math.floor((new Date() - new Date(userInfo?.createdAt)) / (1000 * 60 * 60 * 24)) || 1, icon: '📅' }
               ].map((stat, index) => {
                 console.log(`Stat ${index}:`, stat); // Debug each stat
                 return (
                   <motion.div
                     key={index}
                     whileHover={{ y: -5, scale: 1.02 }}
-                    className="bg-white dark:bg-gray-800 rounded-xl p-6 text-center shadow-lg min-w-0 flex-1"
+                    className="bg-gradient-to-br from-primary-50 to-blue-50 dark:from-gray-800 dark:to-gray-700 rounded-xl p-6 text-center shadow-lg min-w-0 flex-1"
                   >
                     <div className="text-3xl mb-2">{stat.icon}</div>
                     <div className="text-2xl font-bold text-gray-900 dark:text-white mb-1">

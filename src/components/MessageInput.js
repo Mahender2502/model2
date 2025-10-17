@@ -20,7 +20,7 @@ const MessageInput = ({ onSendMessage, isLoading, selectedModel, onModelChange }
   const handleSubmit = (e) => {
     e.preventDefault();
     if (message.trim() && !isLoading) {
-      onSendMessage(message.trim());
+      onSendMessage(message.trim(), selectedModel);
       setMessage("");
     }
   };

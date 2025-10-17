@@ -109,7 +109,7 @@ const Chat = () => {
   const activeConversation = conversations.find(c => c.id === activeConversationId);
 
   // Send message to MongoDB backend
-  const handleSendMessage = async (messageText) => {
+  const handleSendMessage = async (messageText, model) => {
     if (!messageText.trim()) return;
 
     const userMessage = {
@@ -136,7 +136,7 @@ const Chat = () => {
 
     try {
       const token = getAuthToken();
-      const url = `${API_BASE_URL}/conversation`;
+      const url = 'http://localhost:5001/api/chat';
       console.log('Sending message to:', url);
       
       const res = await fetch(url, {
@@ -147,7 +147,8 @@ const Chat = () => {
         },
         body: JSON.stringify({ 
           message: messageText, 
-          sessionId: activeConversationId 
+          sessionId: activeConversationId,
+          model: model || selectedModel
         }),
       });
 
@@ -359,39 +360,62 @@ const Chat = () => {
     }
   };
 
+  // Update conversation title in MongoDB
+  const handleUpdateConversation = async (conversationId, updates) => {
+    try {
+      const token = getAuthToken();
+
+      if (!token) {
+        console.error('No auth token found');
+        return;
+      }
+
+      const url = `${API_BASE_URL}/conversation/${conversationId}`;
+      console.log('Updating conversation at:', url);
+
+      const res = await fetch(url, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(updates),
+      });
+
+      console.log('Update response status:', res.status);
+
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error('Error response:', errorText);
+
+        // Show user-friendly error message
+        alert(`Failed to update conversation: ${res.status === 404 ? 'Conversation not found' : 'Server error occurred'}`);
+        throw new Error(`Failed to update conversation: ${res.status} - ${errorText}`);
+      }
+
+      const data = await res.json();
+      console.log('Conversation updated successfully:', data);
+
+      // Update the conversation in local state
+      setConversations(prev =>
+        prev.map(conv =>
+          conv.id === conversationId
+            ? { ...conv, title: data.title, updatedAt: new Date(data.updatedAt).getTime() }
+            : conv
+        ).sort((a, b) => b.updatedAt - a.updatedAt) // Re-sort by updatedAt
+      );
+
+    } catch (err) {
+      console.error('Error updating conversation:', err);
+
+      // Show error feedback to user if not already shown above
+      if (!err.message.includes('Failed to update conversation')) {
+        alert('An error occurred while updating the conversation. Please try again.');
+      }
+    }
+  };
+
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
-
-  // Loading screen
-  if (isLoadingConversations) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mb-4"></div>
-          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Loading LAWGPT</h2>
-          <p className="text-gray-600 dark:text-gray-400">Fetching your legal consultations...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Empty state
-  // if (!activeConversation && conversations.length === 0) {
-  //   return (
-  //     <div className="fixed inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-  //       <div className="text-center">
-  //         <div className="text-6xl mb-4">⚖️</div>
-  //         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Welcome to LAWGPT</h2>
-  //         <p className="text-gray-600 dark:text-gray-400 mb-6">Your AI Legal Assistant</p>
-  //         <button
-  //           onClick={handleNewConversation}
-  //           className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
-  //         >
-  //           Start New Legal Consultation
-  //         </button>
-  //       </div>
-  //     </div>
-  //   );
-  // }
 
   return (
     <div className="fixed inset-0 flex bg-gray-50 dark:bg-gray-900 overflow-hidden">
@@ -404,6 +428,7 @@ const Chat = () => {
         onSelectConversation={handleSelectConversation}
         onNewConversation={handleNewConversation}
         onDeleteConversation={handleDeleteConversation}
+        onUpdateConversation={handleUpdateConversation}
       />
 
       {/* Main Chat Area */}

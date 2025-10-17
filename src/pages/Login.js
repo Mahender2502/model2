@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useAuth } from '../contexts/AuthContext';
 import AnimatedBubbleParticles from '../components/AnimatedBubbleParticles';
 
 const Login = () => {
@@ -13,6 +14,11 @@ const Login = () => {
   const [errorMsg, setErrorMsg] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const { login } = useAuth();
+
+  // Get the intended destination or default to /chat
+  const from = location.state?.from?.pathname || '/chat';
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -42,7 +48,7 @@ const Login = () => {
     }
 
     try {
-      const response = await fetch("http://localhost:5000/api/auth/login", {
+      const response = await fetch("http://127.0.0.1:5000/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: formData.email, password: formData.password }),
@@ -52,13 +58,15 @@ const Login = () => {
 
       if (!response.ok) {
         setErrorMsg(data.message || "Login failed");
+        setLoading(false);
       } else {
-        localStorage.setItem("token", data.token);
-        localStorage.setItem("userEmail", data.user.email);
-        navigate("/chat");
+        // Use auth context to handle login
+        login(data.token, data.user);
+        navigate(from, { replace: true });
       }
     } catch (err) {
       setErrorMsg("Error connecting to server");
+      setLoading(false);
     }
   };
 

@@ -28,7 +28,7 @@ router.post("/signup", async (req, res) => {
   try {
     const { firstName, lastName, mobileNumber, email, password, userType, newsletter } = req.body;
 
-    // ✅ Check for existing email BEFORE trying to insert
+    // Check for existing email BEFORE trying to insert
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(409).json({ message: "Email already registered" });
@@ -54,8 +54,7 @@ router.post("/signup", async (req, res) => {
   }
 });
 
-
-// 🔑 Login Route
+// Login Route
 router.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -67,7 +66,7 @@ router.post("/login", async (req, res) => {
     if (!isPasswordValid) return res.status(400).json({ message: "Invalid credentials" });
 
     const token = jwt.sign({ id: user._id, email: user.email }, process.env.JWT_SECRET, {
-      expiresIn: "1h",
+      expiresIn: "24h",
     });
 
     res.status(200).json({ message: "Login successful", token, user });
@@ -76,7 +75,7 @@ router.post("/login", async (req, res) => {
   }
 });
 
-// 👤 Get User Profile Route
+// Get User Profile Route
 router.get("/profile", authenticateToken, async (req, res) => {
   try {
     const user = await User.findById(req.user.id).select('-password');
@@ -101,7 +100,7 @@ router.get("/profile", authenticateToken, async (req, res) => {
   }
 });
 
-// ✏️ Update User Profile Route
+// Update User Profile Route
 router.put("/profile", authenticateToken, async (req, res) => {
   try {
     const { firstName, lastName, email, mobileNumber, favoriteFeature } = req.body;
@@ -129,4 +128,3 @@ router.put("/profile", authenticateToken, async (req, res) => {
 });
 
 export default router;
-
