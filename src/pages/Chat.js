@@ -14,8 +14,6 @@ const Chat = () => {
     activeConversationId,
     isSidebarOpen,
     selectedModel,
-    isLoading,
-    isTyping,
     editingMessageId,
     setSelectedModel,
     fetchUserSessions,
@@ -29,26 +27,31 @@ const Chat = () => {
     handleEditCancel,
     handleFileUpload,
     toggleSidebar,
+    getConversationLoadingState,
   } = useChatStore();
 
   const messagesEndRef = useRef(null);
   const navigate = useNavigate();
 
+  const activeConversation = conversations.find(c => c.id === activeConversationId);
+  const activeConversationLoadingState = getConversationLoadingState(activeConversationId);
+  const isActiveConversationTyping = activeConversationLoadingState?.isTyping || false;
+  const isActiveConversationLoading = activeConversationLoadingState?.isLoading || false;
+
   // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [conversations, activeConversationId, isTyping]);
+  }, [conversations, activeConversationId, isActiveConversationTyping]);
 
   // Load conversations on component mount
   useEffect(() => {
-    const { conversations, isTyping } = useChatStore.getState();
-    // Only fetch if conversations are empty or if not currently typing
-    if (conversations.length === 0 && !isTyping) {
+    const { conversations } = useChatStore.getState();
+    const activeLoadingState = getConversationLoadingState(activeConversationId);
+    // Only fetch if conversations are empty or if active conversation is not currently typing
+    if (conversations.length === 0 && !activeLoadingState?.isTyping) {
       fetchUserSessions();
     }
-  }, [fetchUserSessions]);
-
-  const activeConversation = conversations.find(c => c.id === activeConversationId);
+  }, [fetchUserSessions, activeConversationId, getConversationLoadingState]);
 
   return (
     <div className="fixed inset-0 flex bg-gray-50 dark:bg-gray-900 overflow-hidden">
@@ -123,28 +126,21 @@ const Chat = () => {
                   isInEditMode={editingMessageId === msg.id}
                 />
               ))}
-              {isTyping && <TypingIndicator />}
+              {isActiveConversationTyping && <TypingIndicator />}
             </AnimatePresence>
             <div ref={messagesEndRef} />
           </div>
         </div>
 
         {/* Message Input */}
-        {/* <MessageInput
+        <MessageInput
           onSendMessage={handleSendMessage}
-          isLoading={isLoading}
+          isLoading={isActiveConversationLoading}
           selectedModel={selectedModel}
           onModelChange={setSelectedModel}
           onFileUpload={handleFileUpload}
-        /> */}
-        <MessageInput
-  onSendMessage={handleSendMessage}
-  isLoading={isLoading}
-  selectedModel={selectedModel}
-  onModelChange={setSelectedModel}
-  onFileUpload={handleFileUpload}
-  activeConversationId={activeConversationId}  // ADD THIS
-/>
+          activeConversationId={activeConversationId}
+        />
       </div>
     </div>
   );
