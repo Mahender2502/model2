@@ -391,7 +391,7 @@ import os
 from dotenv import load_dotenv
 import jwt
 from functools import wraps
-
+from huggingface_hub import login
 # Import semantic search engine and file processor
 from semantic_search import SemanticSearchEngine, fetch_session_messages
 from file_processing_service import file_processor
@@ -410,6 +410,8 @@ RECENCY_WEIGHT = float(os.getenv("RECENCY_WEIGHT", "0.3"))
 
 # Load tokenizer for LAWGPT-3.5
 try:
+    HF_TOKEN = os.getenv("HF_TOKEN")
+    login(HF_TOKEN)
     tokenizer = AutoTokenizer.from_pretrained("google/gemma-3-1b-it")
     print("✅ Tokenizer loaded successfully")
 except Exception as e:
