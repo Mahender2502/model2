@@ -87,28 +87,28 @@ const ChatSidebar = ({
     });
   };
 
-  const getConversationPreview = (messages) => {
-    if (!messages || messages.length === 0) return "New legal consultation";
+  // const getConversationPreview = (messages) => {
+  //   if (!messages || messages.length === 0) return "New legal Session";
     
-    // Find the last user message for preview
-    const userMessages = messages.filter(msg => msg.isUser);
-    if (userMessages.length > 0) {
-      const lastUserMessage = userMessages[userMessages.length - 1];
-      return lastUserMessage.message.length > 35 
-        ? lastUserMessage.message.substring(0, 35) + "..."
-        : lastUserMessage.message;
-    }
+  //   // Find the last user message for preview
+  //   const userMessages = messages.filter(msg => msg.isUser);
+  //   if (userMessages.length > 0) {
+  //     const lastUserMessage = userMessages[userMessages.length - 1];
+  //     return lastUserMessage.message.length > 35 
+  //       ? lastUserMessage.message.substring(0, 35) + "..."
+  //       : lastUserMessage.message;
+  //   }
     
-    // Fallback to last message if no user messages
-    const lastMessage = messages[messages.length - 1];
-    if (lastMessage) {
-      return lastMessage.message.length > 35 
-        ? lastMessage.message.substring(0, 35) + "..."
-        : lastMessage.message;
-    }
+  //   // Fallback to last message if no user messages
+  //   const lastMessage = messages[messages.length - 1];
+  //   if (lastMessage) {
+  //     return lastMessage.message.length > 35 
+  //       ? lastMessage.message.substring(0, 35) + "..."
+  //       : lastMessage.message;
+  //   }
     
-    return "New legal consultation";
-  };
+  //   return "New legal Session";
+  // };
 
   return (
     <>
@@ -121,7 +121,7 @@ const ChatSidebar = ({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             onClick={onToggle}
-            className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+            className="fixed inset-0 bg-black bg-opacity-50 z-[60] lg:hidden"
           />
         )}
       </AnimatePresence>
@@ -129,7 +129,7 @@ const ChatSidebar = ({
       {/* Sidebar Container */}
       <div
         className={`
-        ${isOpen ? "w-72" : "w-0"} 
+        ${isOpen ? "w-72 lg:w-72" : "w-0 lg:w-0"}
         flex-shrink-0 
         transition-all duration-300 ease-in-out
         relative
@@ -144,8 +144,7 @@ const ChatSidebar = ({
           z-50 
           transform transition-transform duration-300 ease-in-out
           ${isOpen ? "translate-x-0" : "-translate-x-full"}
-          lg:relative lg:translate-x-0 lg:z-auto
-          ${!isOpen ? "lg:-translate-x-full" : ""}
+          lg:relative lg:translate-x-0
         `}
         >
           <div className="flex flex-col h-full">
@@ -196,7 +195,7 @@ const ChatSidebar = ({
                     d="M12 4v16m8-8H4"
                   />
                 </svg>
-                New Legal Consultation
+                New Chat
               </motion.button>
             </div>
 
@@ -206,7 +205,7 @@ const ChatSidebar = ({
                 <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                   <div className="text-4xl mb-2">⚖️</div>
                   <p className="font-medium">No consultations yet</p>
-                  <p className="text-sm mt-1">Start a new legal consultation</p>
+                  <p className="text-sm mt-1">Start a new legal Session</p>
                 </div>
               ) : (
                 <div className="space-y-2">

@@ -70,10 +70,10 @@ const Login = () => {
     }
   };
 
-  const handleSocialLogin = (provider) => {
-    console.log(`Initiating ${provider} login...`);
-    // Implement OAuth flow here
-  };
+  // const handleSocialLogin = (provider) => {
+  //   console.log(`Initiating ${provider} login...`);
+  //   // Implement OAuth flow here
+  // };
 
   // Memoized background to avoid re-renders
   const memoizedBubbleParticles = useMemo(() => (
