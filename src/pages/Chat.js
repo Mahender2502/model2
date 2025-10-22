@@ -47,7 +47,6 @@ const Chat = () => {
   useEffect(() => {
     const { conversations } = useChatStore.getState();
     const activeLoadingState = getConversationLoadingState(activeConversationId);
-    // Only fetch if conversations are empty or if active conversation is not currently typing
     if (conversations.length === 0 && !activeLoadingState?.isTyping) {
       fetchUserSessions();
     }
@@ -120,6 +119,7 @@ const Chat = () => {
                   isUser={msg.isUser}
                   timestamp={msg.timestamp}
                   messageId={msg.id}
+                  fileMetadata={msg.fileMetadata}  // ✅ Pass fileMetadata prop
                   onEdit={handleEditMessage}
                   onEditSubmit={handleEditSubmit}
                   onEditCancel={handleEditCancel}

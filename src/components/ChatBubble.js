@@ -6,46 +6,18 @@ const ChatBubble = ({
   isUser,
   timestamp,
   messageId,
+  fileMetadata,  // NEW: Accept fileMetadata prop
   onEdit,
   onEditSubmit,
   onEditCancel,
   isInEditMode = false
 }) => {
-  // Check if message contains file upload information
-  const isFileUploadMessage = (message) => {
-    return message.includes('📎 You uploaded:');
-  };
-
-  // Extract file information from upload message
-  const extractFileInfo = (message) => {
-    if (!isFileUploadMessage(message)) return null;
-
-    // Extract filename from message like "📎 You uploaded: filename.pdf"
-    const match = message.match(/📎 You uploaded: (.+)/);
-    if (match) {
-      return {
-        type: 'file_upload',
-        filename: match[1],
-        displayMessage: message
-      };
-    }
-
-    return {
-      type: 'file_upload',
-      files: [],
-      displayMessage: message
-    };
-  };
-
-  const fileInfo = extractFileInfo(message);
-
   const [isHovered, setIsHovered] = useState(false);
   const [editText, setEditText] = useState(message);
 
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(message);
-      // You could add a toast notification here
     } catch (err) {
       console.error('Failed to copy text: ', err);
     }
@@ -64,10 +36,31 @@ const ChatBubble = ({
   };
 
   const handleEditCancel = () => {
-    setEditText(message); // Reset to original text
+    setEditText(message);
     if (onEditCancel) {
       onEditCancel(messageId);
     }
+  };
+
+  const getFileIcon = (fileType) => {
+    switch(fileType) {
+      case 'pdf':
+        return '📄';
+      case 'docx':
+      case 'doc':
+        return '📝';
+      case 'txt':
+        return '📃';
+      default:
+        return '📎';
+    }
+  };
+
+  const formatFileSize = (bytes) => {
+    if (!bytes) return 'Unknown size';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   };
 
   return (
@@ -107,6 +100,24 @@ const ChatBubble = ({
               position: 'relative'
             }}
           >
+            {/* File Metadata Display */}
+            {fileMetadata && (
+              <div className={`mb-3 pb-3 border-b ${isUser ? 'border-blue-400' : 'border-gray-200 dark:border-gray-600'}`}>
+                <div className="flex items-center space-x-2">
+                  <span className="text-2xl">{getFileIcon(fileMetadata.fileType)}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium truncate ${isUser ? 'text-white' : 'text-gray-900 dark:text-white'}`}>
+                      {fileMetadata.fileName}
+                    </p>
+                    <p className={`text-xs ${isUser ? 'text-blue-100' : 'text-gray-500 dark:text-gray-400'}`}>
+                      {fileMetadata.fileType?.toUpperCase()} • {formatFileSize(fileMetadata.fileSize)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Message Text */}
             {isInEditMode ? (
               <div
                 contentEditable
@@ -139,23 +150,7 @@ const ChatBubble = ({
                 {editText}
               </div>
             ) : (
-              <div>
-                {fileInfo ? (
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <span className="text-lg">📎</span>
-                      <div className="flex-1">
-                        <p className="text-sm whitespace-pre-wrap font-medium">You uploaded:</p>
-                        <p className="text-sm text-blue-600 dark:text-blue-400 font-medium">
-                          {fileInfo.filename || 'File'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm whitespace-pre-wrap">{message}</p>
-                )}
-              </div>
+              <p className="text-sm whitespace-pre-wrap">{message}</p>
             )}
           </div>
 

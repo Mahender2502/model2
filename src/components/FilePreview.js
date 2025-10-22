@@ -1,4 +1,3 @@
-import React from 'react';
 import { motion } from 'framer-motion';
 import { Download, FileText, Image as ImageIcon, X } from 'lucide-react';
 

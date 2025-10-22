@@ -5,12 +5,12 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api
 
 const useChatStore = create(
   subscribeWithSelector((set, get) => ({
-    // State - Per conversation loading states instead of global flags
+    // State
     conversations: [],
     activeConversationId: null,
     isSidebarOpen: true,
     selectedModel: 'LAWGPT-4',
-    conversationLoadingStates: {}, // { conversationId: { isLoading: boolean, isTyping: boolean } }
+    conversationLoadingStates: {},
     isLoadingConversations: true,
     editingMessageId: null,
 
@@ -24,7 +24,6 @@ const useChatStore = create(
     setIsLoadingConversations: (loading) => set({ isLoadingConversations: loading }),
     setEditingMessageId: (id) => set({ editingMessageId: id }),
 
-    // Helper functions for managing per-conversation loading states
     setConversationLoadingState: (conversationId, isLoading, isTyping) =>
       set((state) => ({
         conversationLoadingStates: {
@@ -44,21 +43,47 @@ const useChatStore = create(
       return state.conversationLoadingStates[conversationId] || { isLoading: false, isTyping: false };
     },
 
-    // Fixed File Upload Handler
     handleFileUpload: async (file, message) => {
       const state = get();
       
-      if (!file) {
-        console.error('No file provided');
-        return;
-      }
-
       if (!state.activeConversationId) {
         console.error('No active conversation');
         alert('Please create or select a conversation first');
         return;
       }
       
+      if (!file) {
+        console.error('No file provided');
+        alert('Please select a file to upload');
+        return;
+      }
+      
+      // ✅ Create optimistic user message with file metadata
+      const optimisticUserMessage = {
+        id: `temp-${Date.now()}`,
+        message: message || `Uploaded: ${file.name}`,
+        isUser: true,
+        timestamp: new Date().toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        fileMetadata: {
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.name.split('.').pop()
+        }
+      };
+
+      // ✅ Add optimistic message to UI immediately
+      set((state) => ({
+        conversations: state.conversations.map((conv) =>
+          conv.id === state.activeConversationId
+            ? { ...conv, messages: [...conv.messages, optimisticUserMessage] }
+            : conv
+        ),
+      }));
+
+      // Set loading state
       get().setConversationLoadingState(state.activeConversationId, true, true);
       
       try {
@@ -70,7 +95,7 @@ const useChatStore = create(
 
         const formData = new FormData();
         formData.append('file', file);
-        formData.append('message', message || `Analyze this document: ${file.name}`);
+        formData.append('message', message || '');
         formData.append('sessionId', state.activeConversationId);
         formData.append('model', state.selectedModel);
         formData.append('useContext', 'true');
@@ -78,8 +103,10 @@ const useChatStore = create(
         console.log('📤 Uploading file:', {
           fileName: file.name,
           fileSize: file.size,
+          fileType: file.type,
           sessionId: state.activeConversationId,
-          model: state.selectedModel
+          model: state.selectedModel,
+          hasMessage: !!message
         });
 
         const res = await fetch('http://localhost:5001/api/chat/upload', {
@@ -98,7 +125,7 @@ const useChatStore = create(
         const data = await res.json();
         console.log('✅ File upload response:', data);
         
-        // Update conversation with the complete response from backend
+        // ✅ Transform backend response
         const updatedSession = {
           id: data.session._id,
           title: data.session.title,
@@ -116,18 +143,45 @@ const useChatStore = create(
           })),
         };
         
-        // Update the specific conversation in state
-        set({
+        // ✅ Update conversation WITHOUT re-sorting (keep current order)
+        set((state) => ({
           conversations: state.conversations.map((conv) =>
             conv.id === state.activeConversationId ? updatedSession : conv
-          ).sort((a, b) => b.updatedAt - a.updatedAt),
-        });
+          )
+          // 🔥 REMOVED .sort() to prevent jumping to top
+        }));
 
         console.log('✅ Conversation updated with file upload');
         
       } catch (err) {
         console.error('❌ File upload error:', err);
-        alert(`Failed to upload file: ${err.message}`);
+        
+        // Remove optimistic message and add error message
+        const errorMessage = {
+          id: `error-${Date.now()}`,
+          message: `⚠️ Failed to upload file: ${err.message}`,
+          isUser: false,
+          timestamp: new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          fileMetadata: null
+        };
+        
+        set((state) => ({
+          conversations: state.conversations.map((conv) =>
+            conv.id === state.activeConversationId
+              ? { 
+                  ...conv, 
+                  messages: [
+                    ...conv.messages.filter(m => m.id !== optimisticUserMessage.id),
+                    errorMessage
+                  ] 
+                }
+              : conv
+          ),
+        }));
+        
       } finally {
         get().setConversationLoadingState(state.activeConversationId, false, false);
       }
@@ -159,7 +213,6 @@ const useChatStore = create(
 
         const sessions = await res.json();
         const transformedSessions = sessions
-          .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
           .map((session) => ({
             id: session._id,
             title: session.title || 'New Chat',
@@ -175,7 +228,9 @@ const useChatStore = create(
               }),
               fileMetadata: msg.fileMetadata || null
             })),
-          }));
+          }))
+          // ✅ Sort by updatedAt (most recent first) - only on initial load
+          .sort((a, b) => b.updatedAt - a.updatedAt);
 
         set({ conversations: transformedSessions });
 
@@ -193,200 +248,104 @@ const useChatStore = create(
       }
     },
 
-    // handleSendMessage: async (messageText, model) => {
-    //   if (!messageText.trim()) return;
+    handleSendMessage: async (messageText, model) => {
+      if (!messageText.trim()) return;
 
-    //   const state = get();
-    //   const userMessage = {
-    //     id: `temp-${Date.now()}`,
-    //     message: messageText,
-    //     isUser: true,
-    //     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    //   };
-
-    //   const activeConversation = state.conversations.find((c) => c.id === state.activeConversationId);
-
-    //   if (activeConversation) {
-    //     const updatedMessages = [...activeConversation.messages, userMessage];
-    //     const updatedConversation = { ...activeConversation, messages: updatedMessages };
-    //     set({
-    //       conversations: state.conversations.map((conv) =>
-    //         conv.id === state.activeConversationId ? updatedConversation : conv
-    //       ),
-    //     });
-    //   }
-
-    //   get().setConversationLoadingState(state.activeConversationId, true, true);
-
-    //   try {
-    //     const token = localStorage.getItem('token');
-    //     const res = await fetch('http://localhost:5001/api/chat', {
-    //       method: 'POST',
-    //       headers: {
-    //         Authorization: `Bearer ${token}`,
-    //         'Content-Type': 'application/json',
-    //       },
-    //       body: JSON.stringify({
-    //         message: messageText,
-    //         sessionId: state.activeConversationId,
-    //         model: model || state.selectedModel,
-    //       }),
-    //     });
-
-    //     if (!res.ok) {
-    //       const errorText = await res.text();
-    //       throw new Error(`Failed to send message: ${res.status} - ${errorText}`);
-    //     }
-
-    //     const data = await res.json();
-
-    //     const updatedSession = {
-    //       id: data.session._id,
-    //       title: data.session.title,
-    //       createdAt: new Date(data.session.createdAt).getTime(),
-    //       updatedAt: new Date(data.session.updatedAt).getTime(),
-    //       messages: data.session.messages.map((msg) => ({
-    //         id: msg._id || `${Date.now()}-${Math.random()}`,
-    //         message: msg.message,
-    //         isUser: msg.sender === 'user',
-    //         timestamp: new Date(msg.timestamp).toLocaleTimeString([], {
-    //           hour: '2-digit',
-    //           minute: '2-digit',
-    //         }),
-    //         fileMetadata: msg.fileMetadata || null
-    //       })),
-    //     };
-
-    //     set({
-    //       conversations: state.conversations.map((conv) =>
-    //         conv.id === state.activeConversationId ? updatedSession : conv
-    //       ),
-    //     });
-
-    //     if (data.session._id !== state.activeConversationId) {
-    //       set({ activeConversationId: data.session._id });
-    //     }
-    //   } catch (err) {
-    //     console.error('Error sending message:', err);
-
-    //     const errorMessage = {
-    //       id: `error-${Date.now()}`,
-    //       message: "I apologize, but I'm having trouble processing your request right now. Please try again.",
-    //       isUser: false,
-    //       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-    //     };
-
-    //     if (activeConversation) {
-    //       const updatedMessages = [...activeConversation.messages, userMessage, errorMessage];
-    //       set({
-    //         conversations: state.conversations.map((conv) =>
-    //           conv.id === state.activeConversationId ? { ...conv, messages: updatedMessages } : conv
-    //         ),
-    //       });
-    //     }
-    //   } finally {
-    //     get().setConversationLoadingState(state.activeConversationId, false, false);
-    //   }
-    // },
-handleSendMessage: async (messageText, model) => {
-  if (!messageText.trim()) return;
-
-  const state = get();
-  const conversationId = state.activeConversationId;
-  const userMessage = {
-    id: `temp-${Date.now()}`,
-    message: messageText,
-    isUser: true,
-    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-  };
-
-  // ✅ Append user message immediately to UI
-  set((state) => ({
-    conversations: state.conversations.map((conv) =>
-      conv.id === conversationId
-        ? { ...conv, messages: [...conv.messages, userMessage] }
-        : conv
-    ),
-  }));
-
-  get().setConversationLoadingState(conversationId, true, true);
-
-  try {
-    const token = localStorage.getItem('token');
-    const res = await fetch('http://localhost:5001/api/chat', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+      const state = get();
+      const conversationId = state.activeConversationId;
+      const userMessage = {
+        id: `temp-${Date.now()}`,
         message: messageText,
-        sessionId: conversationId,
-        model: model || state.selectedModel,
-      }),
-    });
+        isUser: true,
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      };
 
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`Failed to send message: ${res.status} - ${errorText}`);
-    }
+      // ✅ Append user message immediately to UI
+      set((state) => ({
+        conversations: state.conversations.map((conv) =>
+          conv.id === conversationId
+            ? { ...conv, messages: [...conv.messages, userMessage] }
+            : conv
+        ),
+      }));
 
-    const data = await res.json();
+      get().setConversationLoadingState(conversationId, true, true);
 
-    // ✅ Instead of replacing the entire session, merge only the new messages
-    const newMessages = data.session.messages.map((msg) => ({
-      id: msg._id || `${Date.now()}-${Math.random()}`,
-      message: msg.message,
-      isUser: msg.sender === 'user',
-      timestamp: new Date(msg.timestamp).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-      fileMetadata: msg.fileMetadata || null,
-    }));
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch('http://localhost:5001/api/chat', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: messageText,
+            sessionId: conversationId,
+            model: model || state.selectedModel,
+          }),
+        });
 
-    set((state) => ({
-      conversations: state.conversations.map((conv) =>
-        conv.id === conversationId
-          ? {
-              ...conv,
-              messages: newMessages, // ✅ fully synced with backend
-              title: data.session.title,
-              updatedAt: new Date(data.session.updatedAt).getTime(),
-            }
-          : conv
-      ),
-    }));
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Failed to send message: ${res.status} - ${errorText}`);
+        }
 
-    // ✅ If backend created a new session (edge case)
-    if (data.session._id !== conversationId) {
-      set({ activeConversationId: data.session._id });
-    }
-  } catch (err) {
-    console.error('Error sending message:', err);
+        const data = await res.json();
 
-    const errorMessage = {
-      id: `error-${Date.now()}`,
-      message:
-        "⚠️ Sorry, I'm having trouble processing your request. Please try again.",
-      isUser: false,
-      timestamp: new Date().toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-      }),
-    };
+        const newMessages = data.session.messages.map((msg) => ({
+          id: msg._id || `${Date.now()}-${Math.random()}`,
+          message: msg.message,
+          isUser: msg.sender === 'user',
+          timestamp: new Date(msg.timestamp).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+          fileMetadata: msg.fileMetadata || null,
+        }));
 
-    set((state) => ({
-      conversations: state.conversations.map((conv) =>
-        conv.id === conversationId
-          ? { ...conv, messages: [...conv.messages, errorMessage] }
-          : conv
-      ),
-    }));
-  } finally {
-    get().setConversationLoadingState(conversationId, false, false);
-  }
-},
+        // ✅ Update WITHOUT re-sorting
+        set((state) => ({
+          conversations: state.conversations.map((conv) =>
+            conv.id === conversationId
+              ? {
+                  ...conv,
+                  messages: newMessages,
+                  title: data.session.title,
+                  updatedAt: new Date(data.session.updatedAt).getTime(),
+                }
+              : conv
+          )
+          // 🔥 REMOVED .sort() to prevent jumping
+        }));
+
+        if (data.session._id !== conversationId) {
+          set({ activeConversationId: data.session._id });
+        }
+      } catch (err) {
+        console.error('Error sending message:', err);
+
+        const errorMessage = {
+          id: `error-${Date.now()}`,
+          message: "⚠️ Sorry, I'm having trouble processing your request. Please try again.",
+          isUser: false,
+          timestamp: new Date().toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          }),
+        };
+
+        set((state) => ({
+          conversations: state.conversations.map((conv) =>
+            conv.id === conversationId
+              ? { ...conv, messages: [...conv.messages, errorMessage] }
+              : conv
+          ),
+        }));
+      } finally {
+        get().setConversationLoadingState(conversationId, false, false);
+      }
+    },
 
     handleNewConversation: async () => {
       const token = localStorage.getItem('token');
@@ -429,7 +388,11 @@ handleSendMessage: async (messageText, model) => {
           })),
         };
 
-        set({ conversations: [newConversation, ...get().conversations], activeConversationId: newConversation.id });
+        // ✅ Add new conversation to the top
+        set({ 
+          conversations: [newConversation, ...get().conversations], 
+          activeConversationId: newConversation.id 
+        });
       } catch (err) {
         console.error('Error creating new conversation:', err);
 
@@ -448,7 +411,10 @@ handleSendMessage: async (messageText, model) => {
           ],
         };
 
-        set({ conversations: [fallbackConversation, ...get().conversations], activeConversationId: fallbackConversation.id });
+        set({ 
+          conversations: [fallbackConversation, ...get().conversations], 
+          activeConversationId: fallbackConversation.id 
+        });
       }
     },
 
@@ -519,12 +485,14 @@ handleSendMessage: async (messageText, model) => {
 
         const data = await res.json();
 
+        // ✅ Update WITHOUT re-sorting by createdAt
         set({
           conversations: state.conversations.map((conv) =>
             conv.id === conversationId
               ? { ...conv, title: data.title, updatedAt: new Date(data.updatedAt).getTime() }
               : conv
-          ).sort((a, b) => b.createdAt - a.createdAt),
+          )
+          // 🔥 REMOVED incorrect .sort((a, b) => b.createdAt - a.createdAt)
         });
       } catch (err) {
         console.error('Error updating conversation:', err);
@@ -626,11 +594,11 @@ handleSendMessage: async (messageText, model) => {
           })),
         };
 
+        // ✅ Update WITHOUT re-sorting
         set({
-          conversations: state.conversations
-            .map((conv) =>
-              conv.id === state.activeConversationId ? updatedSession : conv
-            ),
+          conversations: state.conversations.map((conv) =>
+            conv.id === state.activeConversationId ? updatedSession : conv
+          ),
         });
 
       } catch (err) {
