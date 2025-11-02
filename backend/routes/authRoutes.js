@@ -26,7 +26,7 @@ const authenticateToken = (req, res, next) => {
 
 router.post("/signup", async (req, res) => {
   try {
-    const { firstName, lastName, mobileNumber, email, password, userType, newsletter } = req.body;
+    const { firstName, lastName, mobileNumber, email, password, userType } = req.body;
 
     // Check for existing email BEFORE trying to insert
     const existingUser = await User.findOne({ email });
@@ -42,8 +42,7 @@ router.post("/signup", async (req, res) => {
       mobileNumber,
       email,
       password: hashedPassword,
-      userType,
-      newsletter,
+      userType
     });
 
     res.status(201).json({ message: "User registered successfully", user });

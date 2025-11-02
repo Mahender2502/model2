@@ -8,17 +8,20 @@ const messageSchema = new mongoose.Schema({
   },
   message: { 
     type: String, 
-    required: true 
+    required: false 
   },
   timestamp: { 
     type: Date, 
     default: Date.now 
   },
-  // NEW: File metadata (only stored for messages with attachments)
+  // File metadata (stored for messages with attachments)
   fileMetadata: {
     fileName: { type: String },
-    fileType: { type: String, enum: ['pdf', 'docx', 'txt'] },
-    fileSize: { type: Number }
+    fileType: { type: String, enum: ['pdf', 'docx', 'txt', 'doc'] },
+    fileSize: { type: Number },
+    // NEW: Store extracted text for edit scenarios
+    // This allows re-using file data when editing messages
+    extractedText: { type: String }
   }
 }, { _id: true });
 
