@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 
 const ChatBubble = ({
   message,
@@ -150,7 +153,13 @@ const ChatBubble = ({
                 {editText}
               </div>
             ) : (
-              <p className="text-sm whitespace-pre-wrap">{message}</p>
+              // <p className="text-sm whitespace-pre-wrap">{message}</p>
+              <div className="prose dark:prose-invert max-w-none text-sm">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {message}
+                </ReactMarkdown>
+              </div>
+
             )}
           </div>
 

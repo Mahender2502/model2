@@ -18,7 +18,7 @@ export const saveConversation = async (req, res) => {
       user: req.user ? req.user.id : "No user in token",
     });
 
-    if (!userId || !userMessage || !botMessage) {
+    if (!userId || !botMessage) {
       console.log(`❌ Missing required fields`);
       return res.status(400).json({ error: "Missing required fields" });
     }

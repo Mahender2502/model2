@@ -61,7 +61,7 @@ const useChatStore = create(
       // ✅ Create optimistic user message with file metadata
       const optimisticUserMessage = {
         id: `temp-${Date.now()}`,
-        message: message || `Uploaded: ${file.name}`,
+        message: message,
         isUser: true,
         timestamp: new Date().toLocaleTimeString([], {
           hour: '2-digit',
@@ -74,7 +74,7 @@ const useChatStore = create(
         }
       };
 
-      // ✅ Add optimistic message to UI immediately
+      // ✅ Add optimistic message to UI immediatelys
       set((state) => ({
         conversations: state.conversations.map((conv) =>
           conv.id === state.activeConversationId
@@ -104,6 +104,7 @@ const useChatStore = create(
           fileName: file.name,
           fileSize: file.size,
           fileType: file.type,
+          message:message,
           sessionId: state.activeConversationId,
           model: state.selectedModel,
           hasMessage: !!message

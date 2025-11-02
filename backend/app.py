@@ -3,6 +3,7 @@ from flask_cors import CORS
 from transformers import AutoTokenizer
 import requests
 import os
+from fun import build_system_prompt
 from dotenv import load_dotenv
 import jwt
 from functools import wraps
@@ -63,6 +64,7 @@ def authenticate_token(f):
             token = auth_header.split(" ")[1] if " " in auth_header else auth_header
             decoded = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
             request.user = decoded
+            print(decoded)
             request.token = token
         except jwt.ExpiredSignatureError:
             return jsonify({"error": "Token expired"}), 403
@@ -78,16 +80,7 @@ def encode_message_for_lawgpt(message):
     messages = [
         {
             "role": "system",
-            "content": """You are LawGPT. Respond in clear professional language using short bullet points when possible.
-                Use emojis to improve readability:
-                🧩 Concept / Idea
-                ⚖️ Law / Legal principle
-                🔍 Research / Case references
-                📄 Document / Contract
-                ⚠️ Risk / Warning
-                🏛️ Court / Judgment
-                💡 Advice / Recommendation
-                1️⃣, 2️⃣, 3️⃣ for numbered steps"""
+            "content": build_system_prompt(message)
         },
         {"role": "user", "content": message}
     ]
@@ -251,14 +244,14 @@ def handle_file_upload():
         
         # Generate bot response
         bot_reply = generate_bot_response(enhanced_message, model)
-        
+        # bot_reply="THese is my reply"
         # Save to Node.js MongoDB
         auth_header = request.headers.get("Authorization")
         if auth_header and not auth_header.startswith("Bearer "):
             auth_header = f"Bearer {auth_header}"
         
         # Prepare user message to save (include file indicator)
-        user_message_to_save = message or f"[Uploaded file: {file_metadata['fileName']}]"
+        user_message_to_save = message
         
         try:
             print(f"📡 Sending to Node.js server at {NODE_SERVER_URL}/api/conversation/save")
@@ -285,7 +278,8 @@ def handle_file_upload():
                 raise Exception(f"Failed to save to MongoDB: {node_response.status_code}")
 
             saved_data = node_response.json()
-            print(f"✅ Successfully saved to MongoDB for session {saved_data.get('session', {}).get('_id', 'unknown')}")
+            # print(f"✅ Successfully saved to MongoDB for session {saved_data.get('session', {}).get('_id', 'unknown')}")
+            print(f"Saved _data  ---> {saved_data}")
 
         except requests.exceptions.RequestException as e:
             print(f"❌ Request error to Node.js server: {e}")
@@ -366,7 +360,7 @@ def handle_message():
                 raise Exception(f"Failed to save to MongoDB: {node_response.status_code}")
 
             saved_data = node_response.json()
-
+            # print("saved_data  ---> "+saved_data)
         except Exception as e:
             raise Exception(f"Failed to save conversation: {str(e)}")
 
