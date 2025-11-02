@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 const ChatBubble = ({
   message,
@@ -14,6 +18,134 @@ const ChatBubble = ({
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [editText, setEditText] = useState(message);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return document.documentElement.classList.contains('dark');
+  });
+
+  // Custom markdown components for better styling
+  const MarkdownComponents = {
+    code({ node, inline, className, children, ...props }) {
+      const match = /language-(\w+)/.exec(className || '');
+      return !inline && match ? (
+        <div className="my-4 rounded-lg overflow-hidden">
+          <div className="bg-gray-800 dark:bg-gray-900 px-4 py-2 text-xs text-gray-300 font-mono flex justify-between items-center">
+            <span>{match[1]}</span>
+            <button
+              onClick={() => navigator.clipboard.writeText(String(children).replace(/\n$/, ''))}
+              className="text-gray-400 hover:text-white transition-colors"
+              title="Copy code"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+            </button>
+          </div>
+          <SyntaxHighlighter
+            style={vscDarkPlus}
+            language={match[1]}
+            PreTag="div"
+            customStyle={{
+              margin: 0,
+              borderRadius: 0,
+              fontSize: '0.875rem',
+              padding: '1rem',
+            }}
+            {...props}
+          >
+            {String(children).replace(/\n$/, '')}
+          </SyntaxHighlighter>
+        </div>
+      ) : (
+        <code
+          className="bg-gray-200 dark:bg-gray-700 text-red-600 dark:text-red-400 px-1.5 py-0.5 rounded text-sm font-mono"
+          {...props}
+        >
+          {children}
+        </code>
+      );
+    },
+    table({ children }) {
+      return (
+        <div className="my-4 overflow-x-auto">
+          <table className="min-w-full border-collapse border border-gray-300 dark:border-gray-600">
+            {children}
+          </table>
+        </div>
+      );
+    },
+    thead({ children }) {
+      return (
+        <thead className="bg-gray-100 dark:bg-gray-700">{children}</thead>
+      );
+    },
+    th({ children }) {
+      return (
+        <th className="border border-gray-300 dark:border-gray-600 px-4 py-2 text-left font-semibold text-sm">
+          {children}
+        </th>
+      );
+    },
+    td({ children }) {
+      return (
+        <td className="border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm">
+          {children}
+        </td>
+      );
+    },
+    ul({ children }) {
+      return (
+        <ul className="list-disc list-inside my-2 space-y-1 ml-4">{children}</ul>
+      );
+    },
+    ol({ children }) {
+      return (
+        <ol className="list-decimal list-inside my-2 space-y-1 ml-4">{children}</ol>
+      );
+    },
+    li({ children }) {
+      return <li className="text-sm leading-relaxed">{children}</li>;
+    },
+    p({ children }) {
+      return <p className="text-sm leading-relaxed my-2">{children}</p>;
+    },
+    h1({ children }) {
+      return <h1 className="text-2xl font-bold my-3">{children}</h1>;
+    },
+    h2({ children }) {
+      return <h2 className="text-xl font-bold my-3">{children}</h2>;
+    },
+    h3({ children }) {
+      return <h3 className="text-lg font-semibold my-2">{children}</h3>;
+    },
+    h4({ children }) {
+      return <h4 className="text-base font-semibold my-2">{children}</h4>;
+    },
+    blockquote({ children }) {
+      return (
+        <blockquote className="border-l-4 border-gray-300 dark:border-gray-600 pl-4 my-2 italic text-gray-700 dark:text-gray-300">
+          {children}
+        </blockquote>
+      );
+    },
+    a({ href, children }) {
+      return (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-blue-600 dark:text-blue-400 hover:underline"
+        >
+          {children}
+        </a>
+      );
+    },
+    strong({ children }) {
+      return <strong className="font-bold">{children}</strong>;
+    },
+    em({ children }) {
+      return <em className="italic">{children}</em>;
+    },
+  };
 
   const handleCopy = async () => {
     try {
@@ -281,7 +413,14 @@ const ChatBubble = ({
                   {editText}
                 </div>
               ) : (
-                <p className="text-sm whitespace-pre-wrap leading-relaxed">{message}</p>
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  <ReactMarkdown
+                    remarkPlugins={[remarkGfm]}
+                    components={MarkdownComponents}
+                  >
+                    {message}
+                  </ReactMarkdown>
+                </div>
               )}
             </div>
 

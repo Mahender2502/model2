@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 import ChatSession from "../models/ChatSession.js";
 
+import fetch from "node-fetch";
 const router = express.Router();
 
 // Middleware to verify JWT token
@@ -54,25 +55,211 @@ router.post("/signup", async (req, res) => {
 });
 
 // Login Route
+// router.post("/login", async (req, res) => {
+//   try {
+//     const { email, password } = req.body;
+
+//     const user = await User.findOne({ email });
+//     if (!user) return res.status(400).json({ message: "User not found" });
+
+//     const isPasswordValid = await bcrypt.compare(password, user.password);
+//     if (!isPasswordValid) return res.status(400).json({ message: "Invalid credentials" });
+
+//     const token = jwt.sign({ id: user._id, email: user.email }, process.env.JWT_SECRET, {
+//       expiresIn: "24h",
+//     });
+
+//     res.status(200).json({ message: "Login successful", token, user });
+//   } catch (error) {
+//     res.status(500).json({ message: "Login failed", error: error.message });
+//   }
+// });
+
+
+// router.post("/login", async (req, res) => {
+//   try {
+//     const { email, password, captchaToken } = req.body;
+
+//     // 1️⃣ Check if captcha token exists
+//     if (!captchaToken) {
+//       return res.status(400).json({ message: "Captcha token missing" });
+//     }
+
+//     // 2️⃣ Verify captcha with Google
+//     const secretKey = "6LePZP8rAAAAAJDcldpF7IVa_rDvALLOjxyEfEVj"; // your secret key
+//     const verifyURL = `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${captchaToken}`;
+
+//     const captchaResponse = await fetch(verifyURL, { method: "POST" });
+//     const captchaData = await captchaResponse.json();
+
+//     if (!captchaData.success) {
+//       return res.status(400).json({ message: "Captcha verification failed" });
+//     }
+
+//     // 3️⃣ Check if user exists
+//     const user = await User.findOne({ email });
+//     if (!user) {
+//       return res.status(400).json({ message: "User not found" });
+//     }
+
+//     // 4️⃣ Validate password
+//     const isPasswordValid = await bcrypt.compare(password, user.password);
+//     if (!isPasswordValid) {
+//       return res.status(400).json({ message: "Invalid credentials" });
+//     }
+
+//     // 5️⃣ Generate JWT token
+//     const token = jwt.sign(
+//       { id: user._id, email: user.email },
+//       process.env.JWT_SECRET,
+//       { expiresIn: "24h" }
+//     );
+
+//     res.status(200).json({
+//       message: "Login successful",
+//       token,
+//       user,
+//     });
+
+//   } catch (error) {
+//     console.error("Login Error:", error.message);
+//     res.status(500).json({ message: "Login failed", error: error.message });
+//   }
+// });
+// router.post("/login", async (req, res) => {
+//   try {
+//     const { email, password, captchaToken } = req.body;
+
+//     if (!captchaToken) {
+//       return res.status(400).json({ message: "Captcha token missing" });
+//     }
+
+//     const secretKey = process.env.RECAPTCHA_SECRET;
+//     const verifyURL = "https://www.google.com/recaptcha/api/siteverify";
+//     const response = await fetch(verifyURL, {
+//       method: "POST",
+//       headers: { "Content-Type": "application/x-www-form-urlencoded" },
+//       body: `secret=${secretKey}&response=${captchaToken}&remoteip=${req.ip}`,
+//     });
+
+//     const data = await response.json();
+//     console.log("Captcha verify response:", data); // 👈 check this in console
+
+//     if (!data.success) {
+//       return res.status(400).json({ message: "Captcha verification failed", details: data });
+//     }
+
+//     const user = await User.findOne({ email });
+//     if (!user) return res.status(400).json({ message: "User not found" });
+
+//     const isPasswordValid = await bcrypt.compare(password, user.password);
+//     if (!isPasswordValid) return res.status(400).json({ message: "Invalid credentials" });
+
+//     const token = jwt.sign(
+//       { id: user._id, email: user.email },
+//       process.env.JWT_SECRET,
+//       { expiresIn: "24h" }
+//     );
+
+//     res.status(200).json({ message: "Login successful", token, user });
+//   } catch (err) {
+//     console.error("Login Error:", err);
+//     res.status(500).json({ message: "Login failed", error: err.message });
+//   }
+// });
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, captchaToken } = req.body;
 
+    if (!captchaToken) {
+      return res.status(400).json({ message: "Captcha token missing" });
+    }
+
+    // ✅ Verify with standard reCAPTCHA v2
+    const secretKey =process.env.RECAPTCHA_SECRET // Replace with your actual secret key
+    const verifyURL = `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${captchaToken}`;
+    
+    const captchaResponse = await fetch(verifyURL, { method: "POST" });
+    const captchaData = await captchaResponse.json();
+
+    console.log("Captcha verification response:", captchaData);
+
+    if (!captchaData.success) {
+      return res.status(400).json({ 
+        message: "Captcha verification failed",
+        details: captchaData["error-codes"]
+      });
+    }
+
+    // 🔐 Proceed with user login
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: "User not found" });
 
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) return res.status(400).json({ message: "Invalid credentials" });
 
-    const token = jwt.sign({ id: user._id, email: user.email }, process.env.JWT_SECRET, {
-      expiresIn: "24h",
-    });
+    const token = jwt.sign(
+      { id: user._id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: "24h" }
+    );
 
     res.status(200).json({ message: "Login successful", token, user });
-  } catch (error) {
-    res.status(500).json({ message: "Login failed", error: error.message });
+  } catch (err) {
+    console.error("Login Error:", err);
+    res.status(500).json({ message: "Login failed", error: err.message });
   }
 });
+
+// router.post("/login", async (req, res) => {
+//   try {
+//     const { email, password, captchaToken } = req.body;
+
+//     if (!captchaToken) {
+//       return res.status(400).json({ message: "Captcha token missing" });
+//     }
+
+//     const secretKey = process.env.RECAPTCHA_SECRET;
+//     const captchaResponse = await fetch("https://www.google.com/recaptcha/api/siteverify", {
+//       method: "POST",
+//       headers: { "Content-Type": "application/x-www-form-urlencoded" },
+//       body: `secret=${secretKey}&response=${captchaToken}`,
+//     });
+//     const captchaData = await captchaResponse.json();
+
+//     if (!captchaData.success) {
+//       return res.status(400).json({ message: "Captcha verification failed" });
+//     }
+
+//     const user = await User.findOne({ email });
+//     if (!user) {
+//       return res.status(400).json({ message: "User not found" });
+//     }
+
+//     const isPasswordValid = await bcrypt.compare(password, user.password);
+//     if (!isPasswordValid) {
+//       return res.status(400).json({ message: "Invalid credentials" });
+//     }
+
+//     const token = jwt.sign(
+//       { id: user._id, email: user.email },
+//       process.env.JWT_SECRET,
+//       { expiresIn: "24h" }
+//     );
+
+//     res.status(200).json({
+//       message: "Login successful",
+//       token,
+//       user,
+//     });
+
+//   } catch (error) {
+//     console.error("Login Error:", error.message);
+//     res.status(500).json({ message: "Login failed", error: error.message });
+//   }
+// });
+
+
 
 // Get User Profile Route
 router.get("/profile", authenticateToken, async (req, res) => {
