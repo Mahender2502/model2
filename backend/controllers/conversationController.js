@@ -14,7 +14,7 @@ export const saveConversation = async (req, res) => {
       model,
       isEdit,
       hasFile: !!fileMetadata,
-      fileMetadata: fileMetadata,
+      hasExtractedText: !!(fileMetadata?.extractedText),
       user: req.user ? req.user.id : "No user in token",
     });
 
@@ -62,10 +62,6 @@ export const saveConversation = async (req, res) => {
         message: botMessage,
         timestamp: new Date(),
       };
-      // Only add fileMetadata if it exists
-      if (fileMetadata) {
-        botMsgObj.fileMetadata = fileMetadata;
-      }
       session.messages.push(botMsgObj);
     } else {
       // Normal flow: add both user and bot messages
@@ -76,10 +72,21 @@ export const saveConversation = async (req, res) => {
         message: userMessage.trim(),
         timestamp: new Date(),
       };
-      // Only add fileMetadata to user message if file was uploaded
+      
+      // ✅ FIX: Store FULL fileMetadata including extractedText for edit scenarios
       if (fileMetadata) {
-        userMsgObj.fileMetadata = fileMetadata;
-        console.log(`📎 Adding file metadata to user message:`, fileMetadata);
+        userMsgObj.fileMetadata = {
+          fileName: fileMetadata.fileName,
+          fileType: fileMetadata.fileType,
+          fileSize: fileMetadata.fileSize,
+          // ✅ KEEP extractedText so it can be reused in edits
+          extractedText: fileMetadata.extractedText || null
+        };
+        console.log(`🔎 Adding file metadata to user message:`, {
+          fileName: fileMetadata.fileName,
+          hasExtractedText: !!fileMetadata.extractedText,
+          extractedTextLength: fileMetadata.extractedText?.length || 0
+        });
       }
 
       session.messages.push(userMsgObj);
@@ -122,7 +129,26 @@ export const getUserSessions = async (req, res) => {
       .select("-__v")
       .lean();
 
-    res.status(200).json(sessions);
+    // ✅ FIX: Keep extractedText in the response so frontend can use it for edits
+    // Just add a flag to indicate it exists
+    const sessionsWithFlags = sessions.map(session => ({
+      ...session,
+      messages: session.messages.map(msg => {
+        if (msg.fileMetadata?.extractedText) {
+          return {
+            ...msg,
+            fileMetadata: {
+              ...msg.fileMetadata,
+              hasExtractedText: true
+              // extractedText is already included, keep it
+            }
+          };
+        }
+        return msg;
+      })
+    }));
+
+    res.status(200).json(sessionsWithFlags);
   } catch (error) {
     console.error("❌ getUserSessions Error:", error);
     res.status(500).json({ error: error.message });
@@ -148,7 +174,9 @@ export const deleteSession = async (req, res) => {
     }
 
     console.log(`✅ Session ${id} deleted successfully`);
-
+      await User.findByIdAndUpdate(userId, {
+      $pull: { chatSessions: id }
+    });
     // Decrement user's totalChats count
     try {
       const user = await User.findById(userId);
@@ -193,7 +221,7 @@ export const createNewSession = async (req, res) => {
 
     // Increment user's totalChats count
     try {
-      await User.findByIdAndUpdate(userId, { $inc: { totalChats: 1 } });
+      await User.findByIdAndUpdate(userId, { $inc: { totalChats: 1 },$push: { chatSessions: session._id }, });
       console.log(`📊 User ${userId} totalChats incremented for new session`);
     } catch (countError) {
       console.error(`❌ Error incrementing totalChats:`, countError);
@@ -427,6 +455,32 @@ export const saveBotResponseOnly = async (req, res) => {
     });
   } catch (error) {
     console.error("❌ saveBotResponseOnly Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+export const getMessageWithFileData = async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    const userId = req.user.id;
+
+    const session = await ChatSession.findOne({
+      userId: userId,
+      'messages._id': messageId
+    }).lean();
+
+    if (!session) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    const message = session.messages.find(msg => msg._id.toString() === messageId);
+
+    res.status(200).json({
+      message: message,
+      sessionId: session._id
+    });
+  } catch (error) {
+    console.error('❌ getMessageWithFileData Error:', error);
     res.status(500).json({ error: error.message });
   }
 };
