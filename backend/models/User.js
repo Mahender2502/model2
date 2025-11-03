@@ -9,9 +9,7 @@ const userSchema = new mongoose.Schema(
     userType: { type: String, required: false },
     password: { type: String, required: true },
     chatSessions: [{ type: mongoose.Schema.Types.ObjectId, ref: "ChatSession" }],
-    newsletter: { type: Boolean, default: false },
-    totalChats: { type: Number, default: 0 },
-    favoriteFeature: { type: String, default: 'Dark Mode' },
+    totalChats: { type: Number, default: 0 }
   },
   { timestamps: true }
 );

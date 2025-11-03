@@ -130,13 +130,213 @@ def build_semantic_context(message, session_id, user_id, token):
             relevant_messages=relevant_messages,
             max_context_length=2000
         )
-        
         return context_message
         
     except Exception as e:
         print(f"⚠️ Error building semantic context: {e}")
         return message
+# NEW ENDPOINT: Upload file only, return extracted text + metadata
+@app.route("/api/files/upload-only", methods=["POST"])
+@authenticate_token
+def upload_file_only():
+    """
+    Upload file and extract text WITHOUT saving to conversation.
+    Returns: file metadata + extracted text for later use.
+    """
+    try:
+        user_id = request.user.get("id")
+        
+        file = request.files.get("file")
+        
+        if not file:
+            return jsonify({"error": "No file provided"}), 400
+        
+        if not file.filename:
+            return jsonify({"error": "Invalid file"}), 400
+        
+        print(f"📤 Processing file upload: {file.filename}")
+        
+        # Process file using file processor
+        result = file_processor.process_file(file, file.filename)
+        
+        if not result['success']:
+            return jsonify({
+                "error": f"File processing failed: {result['error']}"
+            }), 400
+        
+        extracted_text = result['extracted_text']
+        file_metadata = {
+            'fileName': result['filename'],
+            'fileType': result['file_type'],
+            'fileSize': result['file_size'],
+            'extractedText': extracted_text  # Include extracted text
+        }
+        
+        print(f"✅ File processed successfully: {result['filename']}")
+        print(f"   Extracted {len(extracted_text)} characters")
+        
+        return jsonify({
+            "success": True,
+            "fileName": file_metadata['fileName'],
+            "fileType": file_metadata['fileType'],
+            "fileSize": file_metadata['fileSize'],
+            "extractedText": extracted_text,
+            "message": "File uploaded and processed successfully"
+        }), 200
 
+    except Exception as e:
+        print(f"❌ upload_file_only error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+# Send message with pre-uploaded file metadata
+
+@app.route("/api/chat/with-file", methods=["POST"])
+@authenticate_token
+def handle_message_with_file():
+    """
+    Handle message with pre-uploaded file metadata.
+    File was already uploaded via /api/files/upload-only.
+    """
+    try:
+        user_id = request.user.get("id")
+        token = request.token
+        data = request.get_json()
+        
+        message = data.get("message", "").strip()
+        session_id = data.get("sessionId")
+        model = data.get("model", "LAWGPT-4")
+        use_context = data.get("useContext", True)
+        is_edit = data.get("isEdit", False)
+        file_metadata = data.get("fileMetadata")  # Pre-uploaded file metadata
+
+        if not user_id:
+            return jsonify({"error": "Missing userId"}), 400
+
+        if not file_metadata or 'extractedText' not in file_metadata:
+            return jsonify({"error": "Missing file metadata or extracted text"}), 400
+
+        print(f"💬 Processing message with file for user {user_id}, session {session_id}")
+        print(f"   File: {file_metadata.get('fileName')}")
+        print(f"   Message: {message}...")
+        
+        # Combine message and extracted text
+        extracted_text = file_metadata['extractedText']
+        
+        # ✅ DEBUG: Check extracted text
+        print(f"📄 DEBUG - Extracted text length: {len(extracted_text)}")
+        print(f"📄 DEBUG - Extracted text preview: {extracted_text[:100]}...")
+        
+        if message:
+            combined_message = f"{message}\n\n📄 **Attached Document Content:**\n\n{extracted_text}"
+        else:
+            combined_message = f"Please analyze this document:\n\n{extracted_text}"
+        
+        
+        # Build semantic context if enabled
+        enhanced_message = combined_message
+        if use_context and ENABLE_SEMANTIC_SEARCH and not is_edit:
+            enhanced_message = build_semantic_context(
+                message=combined_message,
+                session_id=session_id,
+                user_id=user_id,
+                token=token
+            )
+            
+            if enhanced_message != combined_message:
+                print(f"   ✨ Enhanced with context ({len(enhanced_message)} chars)")
+
+        # Generate bot response
+        bot_reply = generate_bot_response(enhanced_message, model)
+
+        # Save to Node.js MongoDB
+        auth_header = request.headers.get("Authorization")
+        if auth_header and not auth_header.startswith("Bearer "):
+            auth_header = f"Bearer {auth_header}"
+        
+        # Prepare user message to save
+        user_message_to_save = message
+        
+        # ✅ FIX: Include extractedText in storage metadata for edit functionality
+        storage_file_metadata = {
+            'fileName': file_metadata['fileName'],
+            'fileType': file_metadata['fileType'],
+            'fileSize': file_metadata['fileSize'],
+            'extractedText': extracted_text  # ✅ MUST include this for edits to work!
+        }
+        
+        print(f"💾 Saving to MongoDB with file metadata:")
+        print(f"   - fileName: {storage_file_metadata['fileName']}")
+        print(f"   - fileType: {storage_file_metadata['fileType']}")
+        print(f"   - extractedText length: {len(storage_file_metadata['extractedText'])}")
+        
+        try:
+            print(f"📡 Sending to Node.js server at {NODE_SERVER_URL}/api/conversation/save")
+            node_response = requests.post(
+                f"{NODE_SERVER_URL}/api/conversation/save",
+                json={
+                    "userId": user_id,
+                    "sessionId": session_id,
+                    "userMessage": user_message_to_save,
+                    "botMessage": bot_reply,
+                    "model": model,
+                    "fileMetadata": storage_file_metadata,  # ✅ Now includes extractedText
+                    "isEdit": is_edit
+                },
+                headers={
+                    "Authorization": auth_header,
+                    "Content-Type": "application/json"
+                },
+                timeout=10
+            )
+
+            if not node_response.ok:
+                error_text = node_response.text
+                print(f"❌ Node.js server error: {node_response.status_code} - {error_text}")
+                raise Exception(f"Failed to save to MongoDB: {node_response.status_code}")
+
+            saved_data = node_response.json()
+            print(f"✅ Successfully saved to MongoDB for session {saved_data.get('session', {}).get('_id', 'unknown')}")
+            
+            # ✅ DEBUG: Verify what was saved
+            saved_session = saved_data.get('session', {})
+            if saved_session.get('messages'):
+                # Check the user message (second to last, since last is bot response)
+                last_user_msg = None
+                for msg in reversed(saved_session['messages']):
+                    if msg.get('sender') == 'user':
+                        last_user_msg = msg
+                        break
+                
+                if last_user_msg and last_user_msg.get('fileMetadata'):
+                    has_extracted = bool(last_user_msg['fileMetadata'].get('extractedText'))
+                    print(f"✅ Verified saved message has extractedText: {has_extracted}")
+                    if has_extracted:
+                        print(f"   Length: {len(last_user_msg['fileMetadata']['extractedText'])} chars")
+                    else:
+                        print(f"⚠️ WARNING: extractedText is missing in saved message!")
+
+        except requests.exceptions.RequestException as e:
+            print(f"❌ Request error to Node.js server: {e}")
+            raise Exception(f"Failed to connect to Node.js server: {str(e)}")
+        except Exception as e:
+            print(f"❌ Error saving to MongoDB: {e}")
+            raise Exception(f"Failed to save conversation: {str(e)}")
+
+        return jsonify({
+            "session": saved_data.get("session"),
+            "botReply": bot_reply,
+            "fileMetadata": storage_file_metadata,  # Return full metadata with extractedText
+            "contextUsed": enhanced_message != combined_message
+        }), 200
+
+    except Exception as e:
+        print(f"❌ handle_message_with_file error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 # ---------------- AI Generation ----------------
 def generate_bot_response(message, model='LAWGPT-4'):
     try:
