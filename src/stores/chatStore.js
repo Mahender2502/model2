@@ -3,6 +3,16 @@ import { subscribeWithSelector } from 'zustand/middleware';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
+// Helper function to add timeout to fetch requests
+const fetchWithTimeout = (url, options = {}, timeout = 180000) => {
+  return Promise.race([
+    fetch(url, options),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Request timeout - the model is taking too long to respond. Please try again.')), timeout)
+    )
+  ]);
+};
+
 const useChatStore = create(
   subscribeWithSelector((set, get) => ({
     // State
@@ -43,7 +53,8 @@ const useChatStore = create(
       return state.conversationLoadingStates[conversationId] || { isLoading: false, isTyping: false };
     },
 
-    handleFileUpload: async (file, message) => {
+    // NEW: Updated to accept pre-uploaded file metadata
+    handleFileUpload: async (file, message, fileMetadata) => {
       const state = get();
       
       if (!state.activeConversationId) {
@@ -51,140 +62,124 @@ const useChatStore = create(
         alert('Please create or select a conversation first');
         return;
       }
-      
-      if (!file) {
-        console.error('No file provided');
-        alert('Please select a file to upload');
-        return;
-      }
-      
-      // ✅ Create optimistic user message with file metadata
-      const optimisticUserMessage = {
-        id: `temp-${Date.now()}`,
-        message: message,
-        isUser: true,
-        timestamp: new Date().toLocaleTimeString([], {
-          hour: '2-digit',
-          minute: '2-digit',
-        }),
-        fileMetadata: {
-          fileName: file.name,
-          fileSize: file.size,
-          fileType: file.name.split('.').pop()
-        }
-      };
 
-      // ✅ Add optimistic message to UI immediatelys
-      set((state) => ({
-        conversations: state.conversations.map((conv) =>
-          conv.id === state.activeConversationId
-            ? { ...conv, messages: [...conv.messages, optimisticUserMessage] }
-            : conv
-        ),
-      }));
-
-      // Set loading state
-      get().setConversationLoadingState(state.activeConversationId, true, true);
-      
-      try {
-        const token = localStorage.getItem('token');
+      // If file metadata is provided, file was already uploaded
+      if (fileMetadata) {
+        console.log('📎 Using pre-uploaded file metadata');
         
-        if (!token) {
-          throw new Error('No authentication token found');
-        }
-
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('message', message || '');
-        formData.append('sessionId', state.activeConversationId);
-        formData.append('model', state.selectedModel);
-        formData.append('useContext', 'true');
-        
-        console.log('📤 Uploading file:', {
-          fileName: file.name,
-          fileSize: file.size,
-          fileType: file.type,
-          message:message,
-          sessionId: state.activeConversationId,
-          model: state.selectedModel,
-          hasMessage: !!message
-        });
-
-        const res = await fetch('http://localhost:5001/api/chat/upload', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`
-          },
-          body: formData
-        });
-        
-        if (!res.ok) {
-          const errorData = await res.json().catch(() => ({ error: 'Upload failed' }));
-          throw new Error(errorData.error || `Upload failed with status ${res.status}`);
-        }
-        
-        const data = await res.json();
-        console.log('✅ File upload response:', data);
-        
-        // ✅ Transform backend response
-        const updatedSession = {
-          id: data.session._id,
-          title: data.session.title,
-          createdAt: new Date(data.session.createdAt).getTime(),
-          updatedAt: new Date(data.session.updatedAt).getTime(),
-          messages: data.session.messages.map((msg) => ({
-            id: msg._id || `${Date.now()}-${Math.random()}`,
-            message: msg.message,
-            isUser: msg.sender === 'user',
-            timestamp: new Date(msg.timestamp).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            }),
-            fileMetadata: msg.fileMetadata || null
-          })),
-        };
-        
-        // ✅ Update conversation WITHOUT re-sorting (keep current order)
-        set((state) => ({
-          conversations: state.conversations.map((conv) =>
-            conv.id === state.activeConversationId ? updatedSession : conv
-          )
-          // 🔥 REMOVED .sort() to prevent jumping to top
-        }));
-
-        console.log('✅ Conversation updated with file upload');
-        
-      } catch (err) {
-        console.error('❌ File upload error:', err);
-        
-        // Remove optimistic message and add error message
-        const errorMessage = {
-          id: `error-${Date.now()}`,
-          message: `⚠️ Failed to upload file: ${err.message}`,
-          isUser: false,
+        const optimisticUserMessage = {
+          id: `temp-${Date.now()}`,
+          message: message ,
+          isUser: true,
           timestamp: new Date().toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
           }),
-          fileMetadata: null
+          fileMetadata: {
+            fileName: fileMetadata.fileName,
+            fileSize: fileMetadata.fileSize,
+            fileType: fileMetadata.fileType
+          }
         };
-        
+
+        // Add optimistic message to UI
         set((state) => ({
           conversations: state.conversations.map((conv) =>
             conv.id === state.activeConversationId
-              ? { 
-                  ...conv, 
-                  messages: [
-                    ...conv.messages.filter(m => m.id !== optimisticUserMessage.id),
-                    errorMessage
-                  ] 
-                }
+              ? { ...conv, messages: [...conv.messages, optimisticUserMessage] }
               : conv
           ),
         }));
+
+        get().setConversationLoadingState(state.activeConversationId, true, true);
         
-      } finally {
-        get().setConversationLoadingState(state.activeConversationId, false, false);
+        try {
+          const token = localStorage.getItem('token');
+          
+          if (!token) {
+            throw new Error('No authentication token found');
+          }
+
+          // Send message with pre-extracted file data
+          const res = await fetchWithTimeout('http://localhost:5001/api/chat/with-file', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              message: message || '',
+              sessionId: state.activeConversationId,
+              model: state.selectedModel,
+              useContext: true,
+              fileMetadata: fileMetadata // Include full metadata with extracted text
+            })
+          }, 180000);
+          
+          if (!res.ok) {
+            const errorData = await res.json().catch(() => ({ error: 'Failed to send message' }));
+            throw new Error(errorData.error || `Request failed with status ${res.status}`);
+          }
+          
+          const data = await res.json();
+          console.log('✅ Message with file sent successfully:', data);
+          
+          const updatedSession = {
+            id: data.session._id,
+            title: data.session.title,
+            createdAt: new Date(data.session.createdAt).getTime(),
+            updatedAt: new Date(data.session.updatedAt).getTime(),
+            messages: data.session.messages.map((msg) => ({
+              id: msg._id || `${Date.now()}-${Math.random()}`,
+              message: msg.message,
+              isUser: msg.sender === 'user',
+              timestamp: new Date(msg.timestamp).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              }),
+              fileMetadata: msg.fileMetadata || null
+            })),
+          };
+          
+          set((state) => ({
+            conversations: state.conversations.map((conv) =>
+              conv.id === state.activeConversationId ? updatedSession : conv
+            )
+          }));
+
+          console.log('✅ Conversation updated with file message');
+          
+        } catch (err) {
+          console.error('❌ Error sending message with file:', err);
+          
+          const errorMessage = {
+            id: `error-${Date.now()}`,
+            message: `⚠️ Failed to send message: ${err.message}`,
+            isUser: false,
+            timestamp: new Date().toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            }),
+            fileMetadata: null
+          };
+          
+          set((state) => ({
+            conversations: state.conversations.map((conv) =>
+              conv.id === state.activeConversationId
+                ? { 
+                    ...conv, 
+                    messages: [
+                      ...conv.messages.filter(m => m.id !== optimisticUserMessage.id),
+                      errorMessage
+                    ] 
+                  }
+                : conv
+            ),
+          }));
+          
+        } finally {
+          get().setConversationLoadingState(state.activeConversationId, false, false);
+        }
       }
     },
 
@@ -199,13 +194,13 @@ const useChatStore = create(
       }
 
       try {
-        const res = await fetch(`${API_BASE_URL}/conversation`, {
+        const res = await fetchWithTimeout(`${API_BASE_URL}/conversation`, {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        });
+        }, 30000);
 
         if (!res.ok) {
           const errorText = await res.text();
@@ -230,7 +225,6 @@ const useChatStore = create(
               fileMetadata: msg.fileMetadata || null
             })),
           }))
-          // ✅ Sort by updatedAt (most recent first) - only on initial load
           .sort((a, b) => b.updatedAt - a.updatedAt);
 
         set({ conversations: transformedSessions });
@@ -239,11 +233,11 @@ const useChatStore = create(
         if (transformedSessions.length > 0 && !state.activeConversationId) {
           set({ activeConversationId: transformedSessions[0].id });
         } else if (transformedSessions.length === 0) {
-          get().handleNewConversation();
+            // get().handleNewConversation();
         }
       } catch (err) {
         console.error('Error fetching sessions:', err);
-        get().handleNewConversation();
+         get().handleNewConversation();
       } finally {
         set({ isLoadingConversations: false });
       }
@@ -261,7 +255,6 @@ const useChatStore = create(
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       };
 
-      // ✅ Append user message immediately to UI
       set((state) => ({
         conversations: state.conversations.map((conv) =>
           conv.id === conversationId
@@ -274,7 +267,7 @@ const useChatStore = create(
 
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:5001/api/chat', {
+        const res = await fetchWithTimeout('http://localhost:5001/api/chat', {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -285,8 +278,8 @@ const useChatStore = create(
             sessionId: conversationId,
             model: model || state.selectedModel,
           }),
-        });
-
+        }, 180000);
+       
         if (!res.ok) {
           const errorText = await res.text();
           throw new Error(`Failed to send message: ${res.status} - ${errorText}`);
@@ -305,7 +298,6 @@ const useChatStore = create(
           fileMetadata: msg.fileMetadata || null,
         }));
 
-        // ✅ Update WITHOUT re-sorting
         set((state) => ({
           conversations: state.conversations.map((conv) =>
             conv.id === conversationId
@@ -317,7 +309,6 @@ const useChatStore = create(
                 }
               : conv
           )
-          // 🔥 REMOVED .sort() to prevent jumping
         }));
 
         if (data.session._id !== conversationId) {
@@ -357,14 +348,14 @@ const useChatStore = create(
       }
 
       try {
-        const res = await fetch(`${API_BASE_URL}/conversation/new`, {
+        const res = await fetchWithTimeout(`${API_BASE_URL}/conversation/new`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ title: 'New Legal Session' }),
-        });
+        }, 30000);
 
         if (!res.ok) {
           const errorText = await res.text();
@@ -389,7 +380,6 @@ const useChatStore = create(
           })),
         };
 
-        // ✅ Add new conversation to the top
         set({ 
           conversations: [newConversation, ...get().conversations], 
           activeConversationId: newConversation.id 
@@ -431,13 +421,13 @@ const useChatStore = create(
       const state = get();
 
       try {
-        const res = await fetch(`${API_BASE_URL}/conversation/${id}`, {
+        const res = await fetchWithTimeout(`${API_BASE_URL}/conversation/${id}`, {
           method: 'DELETE',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        });
+        }, 30000);
 
         if (!res.ok) {
           const errorText = await res.text();
@@ -450,8 +440,9 @@ const useChatStore = create(
         if (id === state.activeConversationId) {
           if (remaining.length > 0) {
             set({ activeConversationId: remaining[0].id });
-          } else {
-            get().handleNewConversation();
+          }
+           else {
+            // get().handleNewConversation();
           }
         }
       } catch (err) {
@@ -470,14 +461,14 @@ const useChatStore = create(
       }
 
       try {
-        const res = await fetch(`${API_BASE_URL}/conversation/${conversationId}`, {
+        const res = await fetchWithTimeout(`${API_BASE_URL}/conversation/${conversationId}`, {
           method: 'PUT',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(updates),
-        });
+        }, 30000);
 
         if (!res.ok) {
           const errorText = await res.text();
@@ -486,14 +477,12 @@ const useChatStore = create(
 
         const data = await res.json();
 
-        // ✅ Update WITHOUT re-sorting by createdAt
         set({
           conversations: state.conversations.map((conv) =>
             conv.id === conversationId
               ? { ...conv, title: data.title, updatedAt: new Date(data.updatedAt).getTime() }
               : conv
           )
-          // 🔥 REMOVED incorrect .sort((a, b) => b.createdAt - a.createdAt)
         });
       } catch (err) {
         console.error('Error updating conversation:', err);
@@ -503,114 +492,295 @@ const useChatStore = create(
 
     handleEditMessage: (messageId) => set({ editingMessageId: messageId }),
 
-    handleEditSubmit: async (messageId, editedText) => {
-      const state = get();
-      const activeConversation = state.conversations.find((c) => c.id === state.activeConversationId);
+    // NEW: Updated to handle file metadata in edits
+    // handleEditSubmit: async (messageId, editedText) => {
+    //   const state = get();
+    //   const activeConversation = state.conversations.find((c) => c.id === state.activeConversationId);
 
-      if (!activeConversation) return;
+    //   if (!activeConversation) return;
 
-      const editedIndex = activeConversation.messages.findIndex((msg) => msg.id === messageId);
-      if (editedIndex !== -1) {
-        const updatedMessages = activeConversation.messages.slice(0, editedIndex + 1);
-        updatedMessages[editedIndex] = {
-          ...updatedMessages[editedIndex],
-          message: editedText,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
-        
-        set({
-          conversations: state.conversations.map((conv) =>
-            conv.id === state.activeConversationId 
-              ? { ...conv, messages: updatedMessages }
-              : conv
-          ),
-        });
-      }
+    //   const editedIndex = activeConversation.messages.findIndex((msg) => msg.id === messageId);
+    //   if (editedIndex === -1) return;
 
-      get().setConversationLoadingState(state.activeConversationId, true, true, null);
+    //   const messageToEdit = activeConversation.messages[editedIndex];
+      
+    //   // Preserve file metadata if it exists
+    //   const preservedFileMetadata = messageToEdit.fileMetadata;
 
-      try {
-        const token = localStorage.getItem('token');
-        if (!token) {
-          console.error('No auth token found');
-          get().setConversationLoadingState(state.activeConversationId, false, false);
-          return;
-        }
+    //   // ✅ CLEAR EDIT MODE IMMEDIATELY when Send is clicked
+    //   set({ editingMessageId: null });
 
-        const updateRes = await fetch(`${API_BASE_URL}/conversation/messages/${messageId}`, {
-          method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            message: editedText,
-            timestamp: new Date().toISOString(),
-          }),
-        });
+    //   const updatedMessages = activeConversation.messages.slice(0, editedIndex + 1);
+    //   updatedMessages[editedIndex] = {
+    //     ...updatedMessages[editedIndex],
+    //     message: editedText,
+    //     timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    //   };
+      
+    //   set({
+    //     conversations: state.conversations.map((conv) =>
+    //       conv.id === state.activeConversationId 
+    //         ? { ...conv, messages: updatedMessages }
+    //         : conv
+    //     ),
+    //   });
 
-        if (!updateRes.ok) {
-          const errorText = await updateRes.text();
-          throw new Error(`Failed to update message: ${updateRes.status} - ${errorText}`);
-        }
+    //   get().setConversationLoadingState(state.activeConversationId, true, true);
 
-        console.log('Message updated in backend');
+    //   try {
+    //     const token = localStorage.getItem('token');
+    //     if (!token) {
+    //       console.error('No auth token found');
+    //       get().setConversationLoadingState(state.activeConversationId, false, false);
+    //       return;
+    //     }
 
-        const chatRes = await fetch('http://localhost:5001/api/chat', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            message: editedText,
-            sessionId: state.activeConversationId,
-            model: state.selectedModel,
-            isEdit: true,
-          }),
-        });
+    //     // Update the message in backend
+    //     const updateRes = await fetchWithTimeout(`${API_BASE_URL}/conversation/messages/${messageId}`, {
+    //       method: 'PUT',
+    //       headers: {
+    //         Authorization: `Bearer ${token}`,
+    //         'Content-Type': 'application/json',
+    //       },
+    //       body: JSON.stringify({
+    //         message: editedText,
+    //         timestamp: new Date().toISOString(),
+    //       }),
+    //     }, 30000);
 
-        if (!chatRes.ok) {
-          const errorText = await chatRes.text();
-          throw new Error(`Failed to get response: ${chatRes.status} - ${errorText}`);
-        }
+    //     if (!updateRes.ok) {
+    //       const errorText = await updateRes.text();
+    //       throw new Error(`Failed to update message: ${updateRes.status} - ${errorText}`);
+    //     }
 
-        const data = await chatRes.json();
-        console.log('Bot response received');
+    //     console.log('✏️ Message updated in backend');
 
-        const updatedSession = {
-          id: data.session._id,
-          title: data.session.title,
-          createdAt: new Date(data.session.createdAt).getTime(),
-          updatedAt: new Date(data.session.updatedAt).getTime(),
-          messages: data.session.messages.map((msg) => ({
-            id: msg._id || `${Date.now()}-${Math.random()}`,
-            message: msg.message,
-            isUser: msg.sender === 'user',
-            timestamp: new Date(msg.timestamp).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            }),
-            fileMetadata: msg.fileMetadata || null
-          })),
-        };
+    //     // Generate new response - check if original message had file metadata
+    //     let chatEndpoint = 'http://localhost:5001/api/chat';
+    //     let chatBody = {
+    //       message: editedText,
+    //       sessionId: state.activeConversationId,
+    //       model: state.selectedModel,
+    //       isEdit: true,
+    //     };
 
-        // ✅ Update WITHOUT re-sorting
-        set({
-          conversations: state.conversations.map((conv) =>
-            conv.id === state.activeConversationId ? updatedSession : conv
-          ),
-        });
+    //     // If the edited message had file metadata, use the file endpoint
+    //     if (preservedFileMetadata && preservedFileMetadata.extractedText) {
+    //       console.log('📎 Edited message has file metadata, using file endpoint');
+    //       chatEndpoint = 'http://localhost:5001/api/chat/with-file';
+    //       chatBody.fileMetadata = preservedFileMetadata;
+    //     }
 
-      } catch (err) {
-        console.error('Error in edit flow:', err);
-        alert('Failed to edit message. Please try again.');
-      } finally {
-        get().setConversationLoadingState(state.activeConversationId, false, false);
-      }
+    //     const chatRes = await fetchWithTimeout(chatEndpoint, {
+    //       method: 'POST',
+    //       headers: {
+    //         Authorization: `Bearer ${token}`,
+    //         'Content-Type': 'application/json',
+    //       },
+    //       body: JSON.stringify(chatBody),
+    //     }, 180000);
+
+    //     if (!chatRes.ok) {
+    //       const errorText = await chatRes.text();
+    //       throw new Error(`Failed to get response: ${chatRes.status} - ${errorText}`);
+    //     }
+
+    //     const data = await chatRes.json();
+    //     console.log('✅ Bot response received for edited message');
+
+    //     const updatedSession = {
+    //       id: data.session._id,
+    //       title: data.session.title,
+    //       createdAt: new Date(data.session.createdAt).getTime(),
+    //       updatedAt: new Date(data.session.updatedAt).getTime(),
+    //       messages: data.session.messages.map((msg) => ({
+    //         id: msg._id || `${Date.now()}-${Math.random()}`,
+    //         message: msg.message,
+    //         isUser: msg.sender === 'user',
+    //         timestamp: new Date(msg.timestamp).toLocaleTimeString([], {
+    //           hour: '2-digit',
+    //           minute: '2-digit',
+    //         }),
+    //         fileMetadata: msg.fileMetadata || null
+    //       })),
+    //     };
+
+    //     set({
+    //       conversations: state.conversations.map((conv) =>
+    //         conv.id === state.activeConversationId ? updatedSession : conv
+    //       ),
+    //     });
+
+    //   } catch (err) {
+    //     console.error('Error in edit flow:', err);
+    //     alert('Failed to edit message. Please try again.');
+    //   } finally {
+    //     get().setConversationLoadingState(state.activeConversationId, false, false);
+    //   }
+    // },
+    // Updated handleEditSubmit function in chatStore.js
+
+handleEditSubmit: async (messageId, editedText) => {
+  const state = get();
+  const activeConversation = state.conversations.find((c) => c.id === state.activeConversationId);
+
+  if (!activeConversation) return;
+
+  const editedIndex = activeConversation.messages.findIndex((msg) => msg.id === messageId);
+  if (editedIndex === -1) return;
+
+  const messageToEdit = activeConversation.messages[editedIndex];
+  
+  // ✅ DEBUG: Check what we have
+  console.log('🔍 DEBUG - Original message:', {
+    id: messageToEdit.id,
+    message: messageToEdit.message,
+    hasFileMetadata: !!messageToEdit.fileMetadata,
+    fileMetadata: messageToEdit.fileMetadata
+  });
+  
+  const preservedFileMetadata = messageToEdit.fileMetadata;
+  
+  // ✅ DEBUG: Check extracted text
+  if (preservedFileMetadata) {
+    console.log('📎 DEBUG - File metadata details:', {
+      fileName: preservedFileMetadata.fileName,
+      fileType: preservedFileMetadata.fileType,
+      fileSize: preservedFileMetadata.fileSize,
+      hasExtractedText: !!preservedFileMetadata.extractedText,
+      extractedTextLength: preservedFileMetadata.extractedText?.length || 0,
+      extractedTextPreview: preservedFileMetadata.extractedText?.substring(0, 100) || 'NONE'
+    });
+  } else {
+    console.log('⚠️ DEBUG - No file metadata found');
+  }
+
+  set({ editingMessageId: null });
+
+  const updatedMessages = activeConversation.messages.slice(0, editedIndex + 1);
+  updatedMessages[editedIndex] = {
+    ...updatedMessages[editedIndex],
+    message: editedText,
+    timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+  };
+  
+  set({
+    conversations: state.conversations.map((conv) =>
+      conv.id === state.activeConversationId 
+        ? { ...conv, messages: updatedMessages }
+        : conv
+    ),
+  });
+
+  get().setConversationLoadingState(state.activeConversationId, true, true);
+
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      console.error('No auth token found');
+      get().setConversationLoadingState(state.activeConversationId, false, false);
+      return;
+    }
+
+    const updateRes = await fetchWithTimeout(`${API_BASE_URL}/conversation/messages/${messageId}`, {
+      method: 'PUT',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        message: editedText,
+        timestamp: new Date().toISOString(),
+      }),
+    }, 30000);
+
+    if (!updateRes.ok) {
+      const errorText = await updateRes.text();
+      throw new Error(`Failed to update message: ${updateRes.status} - ${errorText}`);
+    }
+
+    console.log('✏️ Message updated in backend');
+
+    let chatEndpoint = 'http://localhost:5001/api/chat';
+    let chatBody = {
+      message: editedText,
+      sessionId: state.activeConversationId,
+      model: state.selectedModel,
+      isEdit: true,
+    };
+
+    if (preservedFileMetadata?.extractedText) {
+      console.log('📎 ✅ Edited message has file with extracted text!');
+      console.log('📄 Using file endpoint with metadata:', {
+        fileName: preservedFileMetadata.fileName,
+        extractedTextLength: preservedFileMetadata.extractedText.length,
+        extractedTextPreview: preservedFileMetadata.extractedText.substring(0, 200) + '...'
+      });
+      
+      chatEndpoint = 'http://localhost:5001/api/chat/with-file';
+      chatBody.fileMetadata = preservedFileMetadata;
+    } else {
+      console.log('📝 ⚠️ No extracted text found, using regular endpoint');
+    }
+
+    console.log('🔄 Sending request:', {
+      endpoint: chatEndpoint,
+      hasFileMetadata: !!chatBody.fileMetadata,
+      messageLength: chatBody.message.length
+    });
+
+    const chatRes = await fetchWithTimeout(chatEndpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(chatBody),
+    }, 180000);
+
+    if (!chatRes.ok) {
+      const errorText = await chatRes.text();
+      throw new Error(`Failed to get response: ${chatRes.status} - ${errorText}`);
+    }
+
+    const data = await chatRes.json();
+    console.log('✅ Bot response received for edited message');
+
+    const updatedSession = {
+      id: data.session._id,
+      title: data.session.title,
+      createdAt: new Date(data.session.createdAt).getTime(),
+      updatedAt: new Date(data.session.updatedAt).getTime(),
+      messages: data.session.messages.map((msg) => ({
+        id: msg._id || `${Date.now()}-${Math.random()}`,
+        message: msg.message,
+        isUser: msg.sender === 'user',
+        timestamp: new Date(msg.timestamp).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+        fileMetadata: msg.fileMetadata || null
+      })),
+    };
+
+    set({
+      conversations: state.conversations.map((conv) =>
+        conv.id === state.activeConversationId ? updatedSession : conv
+      ),
+    });
+
+  } catch (err) {
+    console.error('❌ Error in edit flow:', err);
+    alert('Failed to edit message. Please try again.');
+  } finally {
+    get().setConversationLoadingState(state.activeConversationId, false, false);
+  }
+},
+
+    handleEditCancel: () => {
+      // ✅ Clear edit mode immediately
+      set({ editingMessageId: null });
     },
-
-    handleEditCancel: () => set({ editingMessageId: null }),
 
     toggleSidebar: () => set((state) => ({ isSidebarOpen: !state.isSidebarOpen })),
   }))

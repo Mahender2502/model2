@@ -32,6 +32,7 @@ const Chat = () => {
 
   const messagesEndRef = useRef(null);
   const navigate = useNavigate();
+  const previousConversationIdRef = useRef(activeConversationId);
 
   const activeConversation = conversations.find(c => c.id === activeConversationId);
   const activeConversationLoadingState = getConversationLoadingState(activeConversationId);
@@ -40,7 +41,15 @@ const Chat = () => {
 
   // Scroll to bottom when messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // If conversation changed (user switched to different session), scroll instantly
+    const conversationChanged = previousConversationIdRef.current !== activeConversationId;
+    
+    messagesEndRef.current?.scrollIntoView({ 
+      behavior: conversationChanged ? 'auto' : 'smooth' 
+    });
+    
+    // Update the ref after scrolling
+    previousConversationIdRef.current = activeConversationId;
   }, [conversations, activeConversationId, isActiveConversationTyping]);
 
   // Load conversations on component mount
@@ -109,8 +118,8 @@ const Chat = () => {
         </div>
 
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto flex justify-center">
-          <div className="w-full max-w-3xl p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto bg-white dark:bg-gray-900">
+          <div className="w-full pt-6">
             <AnimatePresence>
               {activeConversation && activeConversation.messages.map(msg => (
                 <ChatBubble
@@ -119,14 +128,28 @@ const Chat = () => {
                   isUser={msg.isUser}
                   timestamp={msg.timestamp}
                   messageId={msg.id}
-                  fileMetadata={msg.fileMetadata}  // ✅ Pass fileMetadata prop
+                  fileMetadata={msg.fileMetadata}
                   onEdit={handleEditMessage}
                   onEditSubmit={handleEditSubmit}
                   onEditCancel={handleEditCancel}
                   isInEditMode={editingMessageId === msg.id}
                 />
               ))}
-              {isActiveConversationTyping && <TypingIndicator />}
+              {isActiveConversationTyping && (
+                <div className="w-full py-2">
+                  <div className="max-w-3xl mx-auto px-4">
+                    <div className="flex items-center gap-3">
+                      {/* Bot Avatar */}
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center">
+                        <span className="text-white text-base font-semibold">⚖️</span>
+                      </div>
+                      <div className="flex items-center">
+                        <TypingIndicator />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </AnimatePresence>
             <div ref={messagesEndRef} />
           </div>

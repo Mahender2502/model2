@@ -13,7 +13,6 @@ const SignUp = () => {
     userType: '',
     password: '',
     confirmPassword: '',
-    newsletter: false,
     agreeTerms: false,
   });
   const [loading, setLoading] = useState(false);
@@ -107,15 +106,6 @@ const SignUp = () => {
   );
 
   const handleChange = (e) => {
-    // const { name, value, type, checked } = e.target;
-    // const newValue = type === 'checkbox' ? checked : value;
-
-    // setFormData((prev) => ({
-    //   ...prev,
-    //   [name]: newValue,
-    // }));
-
-    // validateField(name, newValue);
     const { name, value, type, checked } = e.target;
     const newValue = type === 'checkbox' ? checked : value;
 
@@ -222,7 +212,7 @@ const SignUp = () => {
       email: formData.email,
       userType: formData.userType,
       password: formData.password,
-      newsletter: formData.newsletter,
+
     };
 
     try {

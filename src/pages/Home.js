@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import ThemeToggle from '../components/ThemeToggle';
 import LiquidEther from '../components/LiquidEther';
-
+import { jwtDecode } from "jwt-decode";
 const Home = () => {
   const navigate = useNavigate();
 
@@ -11,20 +11,50 @@ const Home = () => {
     window.scrollTo(0, 0);
   }, []);
 
-  const handleStartChatting = () => {
-    // Check if user is logged in
-    const lawgptUser = localStorage.getItem("lawgptUser");
+  // const handleStartChatting = () => {
+  //   // Check if user is logged in
+  //    const token = localStorage.getItem("token");
+  // const isAuthenticated = localStorage.getItem("isAuthenticated");
     
-    if (lawgptUser) {
-      // User is logged in, navigate to chat
-      navigate('/chat');
-    } else {
-      // User is not logged in, navigate to login
-      navigate('/login');
+  //   if (token && isAuthenticated === "true") {
+  //     // User is logged in, navigate to chat
+  //     navigate('/chat');
+  //   } else {
+  //     // User is not logged in, navigate to login
+  //     navigate('/login');
+  //   }
+  // };
+
+const handleStartChatting = () => {
+  const token = localStorage.getItem("token");
+  const isAuthenticated = localStorage.getItem("isAuthenticated");
+
+  if (token && isAuthenticated === "true") {
+    try {
+      const decoded = jwtDecode(token);
+      const currentTime = Date.now() / 1000; // in seconds
+
+      if (decoded.exp && decoded.exp < currentTime) {
+        // Token is expired
+        console.warn("Token expired, redirecting to login...");
+        localStorage.removeItem("token");
+        localStorage.removeItem("isAuthenticated");
+        navigate("/login");
+      } else {
+        // Token still valid
+        navigate("/chat");
+      }
+    } catch (error) {
+      console.error("Invalid token:", error);
+      localStorage.removeItem("token");
+      localStorage.removeItem("isAuthenticated");
+      navigate("/login");
     }
-  };
-
-
+  } else {
+    // Not logged in at all
+    navigate("/login");
+  }
+};
   return (
     <div id="top" className="relative min-h-screen transition-colors duration-300 overflow-hidden scroll-smooth">
       {/* Liquid Ether Background */}
