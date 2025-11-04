@@ -248,6 +248,7 @@ const useChatStore = create(
 
       const state = get();
       const conversationId = state.activeConversationId;
+      const selectedModel = state.selectedModel;
       const userMessage = {
         id: `temp-${Date.now()}`,
         message: messageText,
@@ -264,6 +265,70 @@ const useChatStore = create(
       }));
 
       get().setConversationLoadingState(conversationId, true, true);
+
+      // If RAG model is selected, use the RAG endpoint
+      if (selectedModel === "RAG") {
+        try {
+          const token = localStorage.getItem('token');
+          const res = await fetchWithTimeout('http://localhost:5001/api/rag', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              query: messageText,
+            }),
+          }, 180000);
+
+          if (!res.ok) {
+            const errorText = await res.text();
+            throw new Error(`Failed to get RAG response: ${res.status} - ${errorText}`);
+          }
+
+          const data = await res.json();
+
+          const ragResponse = {
+            id: `rag-${Date.now()}`,
+            message: data.response,
+            isUser: false,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+
+          set((state) => ({
+            conversations: state.conversations.map((conv) =>
+              conv.id === conversationId
+                ? { 
+                    ...conv, 
+                    messages: [...conv.messages.filter(m => m.id !== userMessage.id), userMessage, ragResponse],
+                    updatedAt: Date.now(),
+                  }
+                : conv
+            ),
+          }));
+
+          return;
+        } catch (err) {
+          console.error('Error in RAG query:', err);
+          const errorMessage = {
+            id: `error-${Date.now()}`,
+            message: `⚠️ Failed to get RAG response: ${err.message}`,
+            isUser: false,
+            timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          };
+
+          set((state) => ({
+            conversations: state.conversations.map((conv) =>
+              conv.id === conversationId
+                ? { ...conv, messages: [...conv.messages, errorMessage] }
+                : conv
+            ),
+          }));
+          return;
+        } finally {
+          get().setConversationLoadingState(conversationId, false, false);
+        }
+      }
 
       try {
         const token = localStorage.getItem('token');

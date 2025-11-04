@@ -11,6 +11,7 @@ from huggingface_hub import login
 # Import semantic search engine and file processor
 from semantic_search import SemanticSearchEngine, fetch_session_messages
 from file_processing_service import file_processor
+from rag_service import rag_service  # Import the RAG service
 
 load_dotenv()
 
@@ -590,10 +591,41 @@ def health():
         "file_upload": "enabled"
     }), 200
 
+# ---------------- RAG Endpoint ----------------
+@app.route("/api/rag", methods=["POST"])
+@authenticate_token
+def handle_rag_query():
+    try:
+        data = request.get_json()
+        query = data.get("query")
+        
+        if not query:
+            return jsonify({"error": "Query is required"}), 400
+            
+        # Build prompt from RAG service (does retrieval + prompt construction)
+        prompt = rag_service.process_query(query)
+        if not prompt:
+            return jsonify({"error": "Section not found or empty prompt"}), 404
+
+        # Use the LAWGPT-3.5 model (local/hosted endpoint) to generate the answer
+        bot_reply = generate_bot_response(prompt, model='LAWGPT-3.5')
+
+        return jsonify({
+            "response": bot_reply,
+            "success": True
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ RAG query error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
 # ---------------- Main ----------------
 if __name__ == "__main__":
     port = int(os.getenv("FLASK_PORT", 5001))
     print(f"🚀 Flask Chat Server starting on port {port}...")
     print(f"🔍 Semantic Search: {'Enabled' if ENABLE_SEMANTIC_SEARCH and semantic_engine else 'Disabled'}")
     print(f"📎 File Upload: Enabled (PDF, DOCX, TXT)")
+    print(f"🤖 RAG System: Enabled")
     app.run(host="0.0.0.0", port=port, debug=True, threaded=True)

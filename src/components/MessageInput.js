@@ -297,9 +297,9 @@
 // export default MessageInput;
 
 
-import React, { useState, useRef, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Paperclip, X, Upload } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Paperclip, Upload, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 const MessageInput = ({ 
   onSendMessage, 
@@ -324,6 +324,7 @@ const MessageInput = ({
     { id: "Legal-Pro", name: "Legal-Pro", description: "Specialized for complex legal analysis" },
     { id: "Contract-AI", name: "Contract-AI", description: "Expert in contract law and review" },
     { id: "LitAssist", name: "LitAssist", description: "Litigation and case law specialist" },
+    { id: "RAG", name: "BNS-RAG", description: "Specialized in Bharatiya Nyaya Sanhita knowledge" },
   ];
 
   const handleSubmit = (e) => {
