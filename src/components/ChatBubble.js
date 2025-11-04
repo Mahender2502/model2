@@ -272,12 +272,7 @@ const ChatBubble = ({
                 {editText}
               </div>
             ) : (
-              // <p className="text-sm whitespace-pre-wrap">{message}</p>
-              <div className="prose dark:prose-invert max-w-none text-sm">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {message}
-                </ReactMarkdown>
-              </div>
+              <p className="text-sm whitespace-pre-wrap">{message}</p>
 
             )}
           </div>
