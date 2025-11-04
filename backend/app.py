@@ -357,7 +357,7 @@ def generate_bot_response(message, model='LAWGPT-4'):
         else:
             body = {"query": message}
 
-        response = requests.post(api_url, json=body, headers={"Content-Type": "application/json"}, timeout=80)
+        response = requests.post(api_url, json=body, headers={"Content-Type": "application/json"}, timeout=300)
         print(f"📡 Response: {response.status_code}")
         if not response.ok:
             raise Exception(f"Server error: {response.status_code} - {response.text}")
@@ -374,6 +374,12 @@ def generate_bot_response(message, model='LAWGPT-4'):
         print("final_output:", final_output[:100] + "..." if len(final_output) > 100 else final_output)
         return final_output or "⚠️ No response generated from model."
 
+    except requests.exceptions.Timeout:
+        print(f"❌ generateBotResponse timeout error")
+        return f"⚠️ The model is taking too long to respond. This can happen when the model server is busy. Please try again in a moment."
+    except requests.exceptions.RequestException as e:
+        print(f"❌ generateBotResponse request error: {e}")
+        return f"⚠️ Could not connect to the model server. Please check if the model is running and try again."
     except Exception as e:
         print(f"❌ generateBotResponse error: {e}")
         return f"⚠️ Sorry, I could not process your request: {str(e)}"

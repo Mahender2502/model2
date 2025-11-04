@@ -3,6 +3,16 @@ import { subscribeWithSelector } from 'zustand/middleware';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
+// Helper function to add timeout to fetch requests
+const fetchWithTimeout = (url, options = {}, timeout = 180000) => {
+  return Promise.race([
+    fetch(url, options),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Request timeout - the model is taking too long to respond. Please try again.')), timeout)
+    )
+  ]);
+};
+
 const useChatStore = create(
   subscribeWithSelector((set, get) => ({
     // State
@@ -91,7 +101,7 @@ const useChatStore = create(
           }
 
           // Send message with pre-extracted file data
-          const res = await fetch('http://localhost:5001/api/chat/with-file', {
+          const res = await fetchWithTimeout('http://localhost:5001/api/chat/with-file', {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${token}`,
@@ -104,7 +114,7 @@ const useChatStore = create(
               useContext: true,
               fileMetadata: fileMetadata // Include full metadata with extracted text
             })
-          });
+          }, 180000);
           
           if (!res.ok) {
             const errorData = await res.json().catch(() => ({ error: 'Failed to send message' }));
@@ -184,13 +194,13 @@ const useChatStore = create(
       }
 
       try {
-        const res = await fetch(`${API_BASE_URL}/conversation`, {
+        const res = await fetchWithTimeout(`${API_BASE_URL}/conversation`, {
           method: 'GET',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        });
+        }, 30000);
 
         if (!res.ok) {
           const errorText = await res.text();
@@ -257,7 +267,7 @@ const useChatStore = create(
 
       try {
         const token = localStorage.getItem('token');
-        const res = await fetch('http://localhost:5001/api/chat', {
+        const res = await fetchWithTimeout('http://localhost:5001/api/chat', {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
@@ -268,7 +278,7 @@ const useChatStore = create(
             sessionId: conversationId,
             model: model || state.selectedModel,
           }),
-        });
+        }, 180000);
        
         if (!res.ok) {
           const errorText = await res.text();
@@ -338,14 +348,14 @@ const useChatStore = create(
       }
 
       try {
-        const res = await fetch(`${API_BASE_URL}/conversation/new`, {
+        const res = await fetchWithTimeout(`${API_BASE_URL}/conversation/new`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ title: 'New Legal Session' }),
-        });
+        }, 30000);
 
         if (!res.ok) {
           const errorText = await res.text();
@@ -411,13 +421,13 @@ const useChatStore = create(
       const state = get();
 
       try {
-        const res = await fetch(`${API_BASE_URL}/conversation/${id}`, {
+        const res = await fetchWithTimeout(`${API_BASE_URL}/conversation/${id}`, {
           method: 'DELETE',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
-        });
+        }, 30000);
 
         if (!res.ok) {
           const errorText = await res.text();
@@ -451,14 +461,14 @@ const useChatStore = create(
       }
 
       try {
-        const res = await fetch(`${API_BASE_URL}/conversation/${conversationId}`, {
+        const res = await fetchWithTimeout(`${API_BASE_URL}/conversation/${conversationId}`, {
           method: 'PUT',
           headers: {
             Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(updates),
-        });
+        }, 30000);
 
         if (!res.ok) {
           const errorText = await res.text();
@@ -526,7 +536,7 @@ const useChatStore = create(
     //     }
 
     //     // Update the message in backend
-    //     const updateRes = await fetch(`${API_BASE_URL}/conversation/messages/${messageId}`, {
+    //     const updateRes = await fetchWithTimeout(`${API_BASE_URL}/conversation/messages/${messageId}`, {
     //       method: 'PUT',
     //       headers: {
     //         Authorization: `Bearer ${token}`,
@@ -536,7 +546,7 @@ const useChatStore = create(
     //         message: editedText,
     //         timestamp: new Date().toISOString(),
     //       }),
-    //     });
+    //     }, 30000);
 
     //     if (!updateRes.ok) {
     //       const errorText = await updateRes.text();
@@ -561,14 +571,14 @@ const useChatStore = create(
     //       chatBody.fileMetadata = preservedFileMetadata;
     //     }
 
-    //     const chatRes = await fetch(chatEndpoint, {
+    //     const chatRes = await fetchWithTimeout(chatEndpoint, {
     //       method: 'POST',
     //       headers: {
     //         Authorization: `Bearer ${token}`,
     //         'Content-Type': 'application/json',
     //       },
     //       body: JSON.stringify(chatBody),
-    //     });
+    //     }, 180000);
 
     //     if (!chatRes.ok) {
     //       const errorText = await chatRes.text();
@@ -672,7 +682,7 @@ handleEditSubmit: async (messageId, editedText) => {
       return;
     }
 
-    const updateRes = await fetch(`${API_BASE_URL}/conversation/messages/${messageId}`, {
+    const updateRes = await fetchWithTimeout(`${API_BASE_URL}/conversation/messages/${messageId}`, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${token}`,
@@ -682,7 +692,7 @@ handleEditSubmit: async (messageId, editedText) => {
         message: editedText,
         timestamp: new Date().toISOString(),
       }),
-    });
+    }, 30000);
 
     if (!updateRes.ok) {
       const errorText = await updateRes.text();
@@ -719,14 +729,14 @@ handleEditSubmit: async (messageId, editedText) => {
       messageLength: chatBody.message.length
     });
 
-    const chatRes = await fetch(chatEndpoint, {
+    const chatRes = await fetchWithTimeout(chatEndpoint, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(chatBody),
-    });
+    }, 180000);
 
     if (!chatRes.ok) {
       const errorText = await chatRes.text();
