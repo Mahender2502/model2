@@ -601,22 +601,130 @@ def handle_rag_query():
         
         if not query:
             return jsonify({"error": "Query is required"}), 400
-            
-        # Build prompt from RAG service (does retrieval + prompt construction)
-        prompt = rag_service.process_query(query)
-        if not prompt:
-            return jsonify({"error": "Section not found or empty prompt"}), 404
+        
+        print(f"🔍 RAG Query: {query}")
+        
+        # Use Gemini directly to answer the query with retrieved context
+        bot_reply = rag_service.answer_with_gemini(query, top_k=5)
+        
+        if not bot_reply or bot_reply.startswith("Error"):
+            return jsonify({"error": bot_reply or "Failed to generate response"}), 400
 
-        # Use the LAWGPT-3.5 model (local/hosted endpoint) to generate the answer
-        bot_reply = generate_bot_response(prompt, model='LAWGPT-3.5')
+        # Persist the RAG conversation to Node/Mongo so it behaves like other models
+        auth_header = request.headers.get("Authorization")
+        if auth_header and not auth_header.startswith("Bearer "):
+            auth_header = f"Bearer {auth_header}"
+
+        saved_data = None
+        try:
+            node_response = requests.post(
+                f"{NODE_SERVER_URL}/api/conversation/save",
+                json={
+                    "userId": request.user.get("id"),
+                    "sessionId": data.get("sessionId"),
+                    "userMessage": query,
+                    "botMessage": bot_reply,
+                    "model": "RAG-Gemini-2.5-Flash",
+                    "fileMetadata": None
+                },
+                headers={
+                    "Authorization": auth_header,
+                    "Content-Type": "application/json"
+                },
+                timeout=10
+            )
+
+            if node_response.ok:
+                saved_data = node_response.json()
+                print(f"✅ RAG conversation saved to Node for session {saved_data.get('session',{}).get('_id','unknown')}")
+            else:
+                print(f"⚠️ Failed to save RAG conversation to Node: {node_response.status_code} - {node_response.text}")
+        except Exception as e:
+            print(f"❌ Error saving RAG conversation to Node: {e}")
 
         return jsonify({
             "response": bot_reply,
-            "success": True
+            "success": True,
+            "saved": bool(saved_data),
+            "session": saved_data.get('session') if saved_data else None
         }), 200
         
     except Exception as e:
         print(f"❌ RAG query error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+# NEW ENDPOINT: Direct chapter-section query with Gemini
+@app.route("/api/rag/section", methods=["POST"])
+@authenticate_token
+def handle_rag_section_query():
+    """Query a specific BNS chapter and section with Gemini explanation"""
+    try:
+        data = request.get_json()
+        chapter = data.get("chapter")
+        section = data.get("section")
+        query = data.get("query")
+        
+        if not chapter or not section:
+            return jsonify({"error": "Chapter and section are required"}), 400
+        
+        print(f"📖 RAG Section Query: Chapter {chapter}, Section {section}")
+        
+        # Use Gemini to explain the specific section
+        bot_reply = rag_service.answer_with_gemini_direct(
+            int(chapter), 
+            int(section), 
+            query
+        )
+        
+        if not bot_reply or bot_reply.startswith("Error"):
+            return jsonify({"error": bot_reply or "Failed to generate response"}), 400
+
+        # Persist the conversation
+        auth_header = request.headers.get("Authorization")
+        if auth_header and not auth_header.startswith("Bearer "):
+            auth_header = f"Bearer {auth_header}"
+
+        saved_data = None
+        try:
+            user_message = f"Chapter {chapter}, Section {section}" + (f": {query}" if query else "")
+            node_response = requests.post(
+                f"{NODE_SERVER_URL}/api/conversation/save",
+                json={
+                    "userId": request.user.get("id"),
+                    "sessionId": data.get("sessionId"),
+                    "userMessage": user_message,
+                    "botMessage": bot_reply,
+                    "model": "RAG-Gemini-Section",
+                    "fileMetadata": None
+                },
+                headers={
+                    "Authorization": auth_header,
+                    "Content-Type": "application/json"
+                },
+                timeout=10
+            )
+
+            if node_response.ok:
+                saved_data = node_response.json()
+                print(f"✅ RAG section conversation saved to Node")
+            else:
+                print(f"⚠️ Failed to save RAG section conversation: {node_response.status_code}")
+        except Exception as e:
+            print(f"❌ Error saving RAG section conversation: {e}")
+
+        return jsonify({
+            "response": bot_reply,
+            "success": True,
+            "chapter": chapter,
+            "section": section,
+            "saved": bool(saved_data),
+            "session": saved_data.get('session') if saved_data else None
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ RAG section query error: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
